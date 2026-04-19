@@ -1,0 +1,33 @@
+name: ai_chatbot
+description: AI Academic Mentor Chatbot with RAG
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  supabase_flutter: ^2.3.4
+  flutter_markdown: ^0.6.18
+  http: ^1.2.0
+  shared_preferences: ^2.2.2
+  uuid: ^4.3.3
+  intl: ^0.19.0
+  google_fonts: ^6.2.1
+  provider: ^6.1.2
+  image_picker: ^1.0.7
+  file_picker: ^8.0.3
+  google_generative_ai: ^0.4.3
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - source_assets/
