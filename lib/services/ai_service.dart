@@ -135,7 +135,7 @@ class AIService {
     try {
       final res = await _invokeFunction(
         'generateContent',
-        'gemini-1.5-flash', // Vision capable model
+        'gemini-2.5-flash', // Vision capable model
         {
           'contents': [
             {

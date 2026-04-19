@@ -28,7 +28,6 @@ const String kAppTagline = 'Your Academic Concierge, Always Here';
 const String kGeminiChatModel = 'gemini-2.5-flash-lite';
 
 const List<String> kGeminiFallbacks = [
-  'gemini-flash-latest',
   'gemini-2.5-flash',
   'gemini-2.5-pro',
 ];

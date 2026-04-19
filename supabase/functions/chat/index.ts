@@ -14,7 +14,9 @@ serve(async (req: Request) => {
   }
 
   try {
-    const { message, contents, systemPrompt, model, generationConfig, safetySettings } = await req.json() as any
+    // Parse the full body once
+    const body = await req.json() as any;
+    const { message, contents, systemPrompt, model, generationConfig, safetySettings, content, requests, taskType } = body;
 
     // Retrieve API Keys from environment
     // @ts-ignore
@@ -39,22 +41,42 @@ serve(async (req: Request) => {
     const selectedModel = model || "gemini-2.5-flash-lite";
     const task = req.headers.get("x-gemini-task") || "generateContent";
 
-    // Reconstruct payload for the Gemini API
-    const payload = {
-      system_instruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
-      contents: contents,
-      generationConfig: generationConfig || {
-        maxOutputTokens: 2048,
-        temperature: 0.7,
-        topP: 0.9,
-      },
-      safetySettings: safetySettings || [
-        { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
-        { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
-        { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
-        { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
-      ],
-    };
+    // Build payload based on task type
+    let payload: any;
+
+    if (task === "generateContent") {
+      // Chat/generation tasks — include system prompt, safety, config
+      payload = {
+        system_instruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
+        contents: contents,
+        generationConfig: generationConfig || {
+          maxOutputTokens: 2048,
+          temperature: 0.7,
+          topP: 0.9,
+        },
+        safetySettings: safetySettings || [
+          { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_ONLY_HIGH' },
+          { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_ONLY_HIGH' },
+        ],
+      };
+    } else if (task === "embedContent") {
+      // Single embedding — only content + taskType allowed
+      payload = {
+        content: content,
+        taskType: taskType || 'RETRIEVAL_QUERY',
+      };
+    } else if (task === "batchEmbedContents") {
+      // Batch embeddings — only requests array allowed
+      payload = {
+        requests: requests,
+      };
+    } else {
+      // Unknown task — pass body without generationConfig/safetySettings
+      const { model: _m, message: _msg, systemPrompt: _sp, generationConfig: _gc, safetySettings: _ss, ...rest } = body;
+      payload = rest;
+    }
 
     return await callGeminiWithRetry(selectedModel, task, payload, apiKeys);
 
@@ -74,7 +96,7 @@ async function handleSimpleChat(message: string, apiKeys: string[]) {
   const payload = {
     contents: [{ role: 'user', parts: [{ text: message }] }]
   };
-  const res = await callGeminiWithRetry("gemini-1.5-flash", "generateContent", payload, apiKeys);
+  const res = await callGeminiWithRetry("gemini-2.5-flash", "generateContent", payload, apiKeys);
   const data = await res.json() as any;
   
   if (data.candidates && data.candidates[0]?.content?.parts[0]?.text) {
@@ -115,4 +137,3 @@ async function callGeminiWithRetry(model: string, task: string, payload: any, ap
     }
   );
 }
-
