@@ -7863,7 +7863,7 @@ var $async$aI8=A.u(function(a,b){if(a===1)return A.p(b,r)
 for(;;)switch(s){case 0:if($.a8==null)A.aLe()
 $.a8.toString
 s=2
-return A.m(A.aqX("",""),$async$aI8)
+return A.m(A.aqX("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aXlsZHJtYWt3b2dneXZmeHNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTYxMjAsImV4cCI6MjA5MTgzMjEyMH0.hMHOAb2aOL4qrILqHSBdDl6Qx7nueITxWajM1yJkmrU","https://zwiyldrmakwoggyvfxsp.supabase.co"),$async$aI8)
 case 2:if($.a8==null)A.aLe()
 q=$.a8
 q.toString
