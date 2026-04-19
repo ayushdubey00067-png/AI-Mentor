@@ -8595,7 +8595,7 @@ s=p}for(;;)switch(s){case 0:g="You are extracting text from a college document.\
 p=4
 j=t.N
 s=7
-return A.m(A.q5("generateContent","gemini-1.5-flash",A.W(["contents",A.b([A.W(["parts",A.b([A.W(["inline_data",A.W(["mime_type",c,"data",a],j,j)],j,t.GU),A.W(["text",g],j,j)],t.Mq)],j,t.JD)],t.lU),"generationConfig",A.W(["maxOutputTokens",4096],j,t.S)],j,t.z)),$async$Me)
+return A.m(A.q5("generateContent","gemini-2.5-flash",A.W(["contents",A.b([A.W(["parts",A.b([A.W(["inline_data",A.W(["mime_type",c,"data",a],j,j)],j,t.GU),A.W(["text",g],j,j)],t.Mq)],j,t.JD)],t.lU),"generationConfig",A.W(["maxOutputTokens",4096],j,t.S)],j,t.z)),$async$Me)
 case 7:n=e
 m=B.a3.jE(n.b,null)
 j=J.b2(m,"candidates")
@@ -108050,11 +108050,11 @@ B.SI=new A.az(B.dX,["attendance","Attendance Sheet","\u2705",B.q5],t.R)
 B.SH=new A.az(B.dX,["assignment","Assignment","\ud83d\udcdd",B.d8],t.R)
 B.SL=new A.az(B.dX,["other","Policy / Other","\ud83c\udfdb\ufe0f",B.ah],t.R)
 B.j6=s([B.SJ,B.SM,B.SK,B.SN,B.SI,B.SH,B.SL],t.H7)
+B.th=s(["gemini-2.5-flash","gemini-2.5-pro"],t.s)
 B.Go=new A.aL(0.75,B.x,B.pR,B.cb,1.5)
 B.QT=s([B.Go],t.V)
 B.QY=s([47,47,47,47,72,97,122,147],t.t)
 B.h3=s([B.dt,B.d3,B.hN,B.hO,B.kI],t.QP)
-B.th=s(["gemini-flash-latest","gemini-2.5-flash","gemini-2.5-pro"],t.s)
 B.Zx=new A.n0("Sign In",null,null,null,null)
 B.Zz=new A.n0("Register",null,null,null,null)
 B.R3=s([B.Zx,B.Zz],t.p)
