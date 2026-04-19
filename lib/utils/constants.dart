@@ -6,8 +6,8 @@
 // ══════════════════════════════════════════════════════════════
 
 // Supabase
-const String kSupabaseUrl = String.fromEnvironment('SUPABASE_URL');
-const String kSupabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
+const String kSupabaseUrl = 'https://zwiyldrmakwoggyvfxsp.supabase.co';
+const String kSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aXlsZHJtYWt3b2dneXZmeHNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTYxMjAsImV4cCI6MjA5MTgzMjEyMH0.hMHOAb2aOL4qrILqHSBdDl6Qx7nueITxWajM1yJkmrU';
 const String kSupabaseChatFunction = 'chat'; // Edge Function name
 
 // Gemini API Keys — Now managed by Supabase Edge Functions!
