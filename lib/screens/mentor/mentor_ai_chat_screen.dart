@@ -70,7 +70,7 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
     setState(() => _msgs.add(_Msg(
       role: 'assistant',
       content:
-          "Hello **$name**! 👋 I'm your **AI Academic Management Assistant** (Gemini).\n\n"
+          "Hello **$name**! 👋 I'm your **AI Academic Management Assistant**\n\n"
           "I can help you with:\n"
           "- 📊 **Student progress** — reports, trends, at-risk identification\n"
           "- ⚠️ **Issue management** — interventions, escalation strategies\n"
@@ -137,8 +137,6 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
             Text('AI Assistant — Mentor Mode',
                 style: GoogleFonts.playfairDisplay(
                     fontSize: 15, fontWeight: FontWeight.w600, color: Colors.white)),
-            Text(_isTyping ? 'Thinking...' : 'Powered by Gemini (Free)',
-                style: GoogleFonts.lato(fontSize: 11, color: Colors.white70)),
           ]),
         ]),
         actions: [

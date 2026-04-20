@@ -50,7 +50,7 @@ serve(async (req: Request) => {
         system_instruction: systemPrompt ? { parts: [{ text: systemPrompt }] } : undefined,
         contents: contents,
         generationConfig: generationConfig || {
-          maxOutputTokens: 2048,
+          maxOutputTokens: 1024,
           temperature: 0.7,
           topP: 0.9,
         },
