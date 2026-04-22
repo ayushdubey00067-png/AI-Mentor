@@ -179,7 +179,7 @@ class ChatProvider extends ChangeNotifier {
             for (var r in results) {
               final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
               final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
-              final total = r['total_marks'] ?? 'N/A';
+              final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
               final grade = r['grade'] ?? 'N/A';
               final exam  = r['exam_type'] ?? 'Examination';
               ragContext += '- $sub ($exam): Marks $marks/$total, Grade: $grade\n';
@@ -323,7 +323,7 @@ class ChatProvider extends ChangeNotifier {
             for (var r in results) {
               final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown';
               final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
-              final total = r['total_marks'] ?? 'N/A';
+              final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
               final grade = r['grade'] ?? 'N/A';
               final exam  = r['exam_type'] ?? 'Examination';
               ragContext += '- SUBJECT: ${sub.toUpperCase()} | EXAM: $exam | MARKS: $marks/$total | GRADE: $grade\n';
