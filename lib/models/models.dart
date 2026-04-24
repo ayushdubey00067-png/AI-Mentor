@@ -319,7 +319,6 @@ class IssueReport {
   final String? studentProgram;
   final String? studentBranch;
   final String? studentSemester;
-  final String? studentRollNo;
   final String? mentorEmail;
   final String category;
   final String title;
@@ -339,7 +338,6 @@ class IssueReport {
     this.studentProgram,
     this.studentBranch,
     this.studentSemester,
-    this.studentRollNo,
     this.mentorEmail,
     required this.category,
     required this.title,
@@ -361,7 +359,6 @@ class IssueReport {
       studentProgram: map['student_program'],
       studentBranch: map['student_branch'],
       studentSemester: map['student_semester'],
-      studentRollNo: map['student_roll_no'],
       mentorEmail: map['mentor_email'],
       category: map['category'] ?? 'other',
       title: map['title'] ?? '',
@@ -385,7 +382,6 @@ class IssueReport {
       'student_program': studentProgram,
       'student_branch': studentBranch,
       'student_semester': studentSemester,
-      'student_roll_no': studentRollNo,
       'mentor_email': mentorEmail,
       'category': category,
       'title': title,

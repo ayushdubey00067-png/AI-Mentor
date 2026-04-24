@@ -328,7 +328,6 @@ class SupabaseService {
     required String studentId, required String? studentName,
     required String? studentEmail, required String? studentProgram,
     required String? studentBranch, required String? studentSemester,
-    required String? studentRollNo,
     required String? mentorEmail, required String category,
     required String title, required String description, required String priority,
   }) async {
@@ -336,7 +335,6 @@ class SupabaseService {
       'student_id': studentId, 'student_name': studentName,
       'student_email': studentEmail, 'student_program': studentProgram,
       'student_branch': studentBranch, 'student_semester': studentSemester,
-      'student_roll_no': studentRollNo,
       'mentor_email': mentorEmail?.toLowerCase(),
       'category': category, 'title': title,
       'description': description, 'priority': priority, 'status': 'open',

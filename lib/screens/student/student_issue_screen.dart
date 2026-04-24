@@ -261,7 +261,6 @@ class _IssueFormState extends State<_IssueForm> {
         studentProgram:  user.program,
         studentBranch:   user.branch,
         studentSemester: user.semester,
-        studentRollNo:   user.rollNumber,
         mentorEmail:     user.mentorEmail,
         category:        _category,
         title:           _titleCtrl.text.trim(),

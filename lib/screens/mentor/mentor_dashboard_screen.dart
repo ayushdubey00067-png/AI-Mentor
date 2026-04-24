@@ -578,7 +578,7 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
                       fontSize: 14, fontWeight: FontWeight.w700,
                       color: const Color(0xFF111827))),
                   if (issue.studentProgram != null)
-                    Text('${issue.studentRollNo ?? ''} • ${issue.studentProgram} • ${issue.studentBranch ?? ''}'
+                    Text('${issue.studentProgram} • ${issue.studentBranch ?? ''}'
                         '${issue.studentSemester != null ? " • Sem ${issue.studentSemester}" : ""}',
                         style: GoogleFonts.lato(fontSize: 11,
                             color: const Color(0xFF6B7280))),
