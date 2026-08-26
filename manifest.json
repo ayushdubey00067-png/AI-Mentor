@@ -1,6 +1,6 @@
 {
-    "name": "ai_chatbot",
-    "short_name": "ai_chatbot",
+    "name": "Acadly",
+    "short_name": "Acadly",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
