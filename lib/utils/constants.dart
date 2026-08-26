@@ -1,27 +1,36 @@
 // lib/utils/constants.dart
 
-
 // ══════════════════════════════════════════════════════════════
 // 🔑 API KEYS (Loaded from .env file)
 // ══════════════════════════════════════════════════════════════
 
 // Supabase
-const String kSupabaseUrl = 'https://zwiyldrmakwoggyvfxsp.supabase.co';
-const String kSupabaseAnonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aXlsZHJtYWt3b2dneXZmeHNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTYxMjAsImV4cCI6MjA5MTgzMjEyMH0.hMHOAb2aOL4qrILqHSBdDl6Qx7nueITxWajM1yJkmrU';
+// Override these at build time with:
+// flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
+const String kSupabaseUrl = String.fromEnvironment(
+  'SUPABASE_URL',
+  defaultValue: 'https://zwiyldrmakwoggyvfxsp.supabase.co',
+);
+const String kSupabaseAnonKey = String.fromEnvironment(
+  'SUPABASE_ANON_KEY',
+  defaultValue:
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aXlsZHJtYWt3b2dneXZmeHNwIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzYyNTYxMjAsImV4cCI6MjA5MTgzMjEyMH0.hMHOAb2aOL4qrILqHSBdDl6Qx7nueITxWajM1yJkmrU',
+);
 const String kSupabaseChatFunction = 'chat'; // Edge Function name
 
 // Gemini API Keys — Now managed by Supabase Edge Functions!
 // The frontend calls the Edge Function instead of using these directly.
 @Deprecated('Keys are now stored in Supabase Secrets')
-final List<String> kGeminiApiKeys = const String.fromEnvironment('GEMINI_API_KEYS')
-    .split(',')
-    .where((k) => k.isNotEmpty)
-    .toList();
+final List<String> kGeminiApiKeys =
+    const String.fromEnvironment('GEMINI_API_KEYS')
+        .split(',')
+        .where((k) => k.isNotEmpty)
+        .toList();
 
 // ══════════════════════════════════════════════════════════════
 
 // App
-const String kAppName = 'AI ChatBot';
+const String kAppName = 'Acadly';
 const String kAppTagline = 'Your Academic Concierge, Always Here';
 
 // Gemini Models (FREE)
@@ -32,7 +41,7 @@ const List<String> kGeminiFallbacks = [
   'gemini-2.5-pro',
 ];
 const String kGeminiEmbedModel = 'gemini-embedding-001';
-const int    kEmbeddingDims    = 3072;
+const int kEmbeddingDims = 3072;
 
 // Supabase tables
 const String kUsersTable = 'users';
@@ -57,6 +66,11 @@ const String kFirstMessage = "Hello! I'm your **AI Academic Assistant** 🎓\n\n
     "- 💬 **Personal Support** — stress, study planning, motivation\n\n"
     "📁 **Tip:** Upload your documents in the **Documents tab** first for accurate answers!\n\n"
     "To get started, tell me your **name, program, branch, and semester**.";
+
+String buildFirstMessage(String? userName) {
+  final name = userName?.trim().isNotEmpty == true ? userName!.trim() : 'there';
+  return 'Hi, **$name** 👋 How can I help you today?\n\n$kFirstMessage';
+}
 
 // ══════════════════════════════════════════════════════════════
 // MASTER SYSTEM PROMPT
@@ -108,6 +122,11 @@ When the user is a student, perform the following tasks:
 - Be simple, helpful, and student-friendly
 - Ask follow-up questions if required
 - Use encouraging tone
+- Talk like a friendly college teacher and personal academic mentor.
+- Be natural, patient, supportive, and conversational.
+- Explain study topics, doubts, exams, assignments, and difficult concepts in simple language with practical examples.
+- Adapt explanations to the student's level and correct mistakes politely.
+- Avoid robotic, generic, or overly long responses; make every answer feel personal and human.
 
 -----------------------------
 MENTOR MODE:
@@ -201,9 +220,7 @@ OUTPUT STYLE:
 // ══════════════════════════════════════════════════════════════
 // STUDENT SYSTEM PROMPT — extends master with student context
 // ══════════════════════════════════════════════════════════════
-const String kStudentSystemPrompt = kMasterSystemPrompt +
-    """
-
+const String kStudentSystemPrompt = """$kMasterSystemPrompt
 CURRENT ROLE: STUDENT
 You are currently assisting a STUDENT. Follow STUDENT MODE rules strictly.
 """;
@@ -211,9 +228,7 @@ You are currently assisting a STUDENT. Follow STUDENT MODE rules strictly.
 // ══════════════════════════════════════════════════════════════
 // MENTOR SYSTEM PROMPT — extends master with mentor context
 // ══════════════════════════════════════════════════════════════
-const String kMentorSystemPrompt = kMasterSystemPrompt +
-    """
-
+const String kMentorSystemPrompt = """$kMasterSystemPrompt
 CURRENT ROLE: MENTOR
 You are currently assisting a MENTOR/FACULTY. Follow MENTOR MODE rules strictly.
 """;
@@ -249,8 +264,8 @@ String buildStudentPrompt({
  - Skills: ${skills?.isNotEmpty == true ? skills!.join(', ') : 'Not specified'}
  - Interests: ${interests?.isNotEmpty == true ? interests!.join(', ') : 'Not specified'}
  
- Always address this student by their first name.
  Tailor all career and academic advice to their specific program, branch, and listed skills.
+ Address the student by their name naturally and occasionally when it feels helpful, such as when acknowledging feelings, giving reassurance, or emphasizing an important next step. Do not start every response with their name, do not repeat it in every paragraph, and do not force it into responses where it sounds unnatural.
 """);
   }
 
@@ -304,6 +319,7 @@ String buildMentorPrompt({
  - Active Student Conversations: ${activeChats ?? 0}
  
  Address the mentor professionally as ${designation != null ? '$designation $mentorName' : mentorName}.
+ Use the mentor's name naturally and occasionally when it feels conversationally appropriate. Do not start every response with the name, repeat it in every paragraph, or force it into responses where it sounds unnatural.
 Be analytical, concise, and data-driven.
 Always end responses with a suggested next action.
 """);

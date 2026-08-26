@@ -500,7 +500,7 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
         
         if (embeddings.isNotEmpty) {
           await SupabaseService.saveDocumentChunks(
-            documentId: doc.id, studentId: doc.studentId!,
+            documentId: doc.id, studentId: doc.studentId,
             chunks: chunks.sublist(0, embeddings.length),
             embeddings: embeddings,
           );
@@ -678,7 +678,9 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
 
   List<Widget> _buildGroupedList() {
     final grouped = <String, List<StudentDocument>>{};
-    for (final d in _docs) grouped.putIfAbsent(d.docType, () => []).add(d);
+    for (final d in _docs) {
+      grouped.putIfAbsent(d.docType, () => []).add(d);
+    }
 
     final widgets = <Widget>[];
     for (final entry in grouped.entries) {
@@ -698,7 +700,9 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                 fontWeight: FontWeight.w700, color: ti['color'] as Color)),
         ),
       ));
-      for (final doc in entry.value) widgets.add(_docCard(doc, ti));
+      for (final doc in entry.value) {
+        widgets.add(_docCard(doc, ti));
+      }
       widgets.add(const SizedBox(height: 6));
     }
     return widgets;

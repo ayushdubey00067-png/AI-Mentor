@@ -8,27 +8,27 @@ import 'supabase_service.dart';
 import 'ai_service.dart';
 
 class ChatProvider extends ChangeNotifier {
-  ConversationModel?      _currentConversation;
-  List<MessageModel>      _messages       = [];
-  List<ConversationModel> _conversations  = [];
-  List<UserModel>         _myStudents     = [];
+  ConversationModel? _currentConversation;
+  List<MessageModel> _messages = [];
+  List<ConversationModel> _conversations = [];
+  List<UserModel> _myStudents = [];
   List<StudentProgressReport> _progressReports = [];
-  UserModel?              _currentUser;
+  UserModel? _currentUser;
 
-  bool _isTyping    = false;
-  bool _isLoading   = false;
+  bool _isTyping = false;
+  bool _isLoading = false;
   bool _loadingProgress = false;
 
   RealtimeChannel? _messageChannel;
 
-  ConversationModel?          get currentConversation => _currentConversation;
-  List<MessageModel>          get messages            => _messages;
-  List<ConversationModel>     get conversations       => _conversations;
-  List<UserModel>             get myStudents          => _myStudents;
-  List<StudentProgressReport> get progressReports     => _progressReports;
-  bool get isTyping         => _isTyping;
-  bool get isLoading        => _isLoading;
-  bool get loadingProgress  => _loadingProgress;
+  ConversationModel? get currentConversation => _currentConversation;
+  List<MessageModel> get messages => _messages;
+  List<ConversationModel> get conversations => _conversations;
+  List<UserModel> get myStudents => _myStudents;
+  List<StudentProgressReport> get progressReports => _progressReports;
+  bool get isTyping => _isTyping;
+  bool get isLoading => _isLoading;
+  bool get loadingProgress => _loadingProgress;
   UserModel? get currentUser => _currentUser;
 
   void setCurrentUser(UserModel? user) {
@@ -37,18 +37,22 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // ── Student: Start new conversation ───────────────────────
-  Future<void> startNewConversation(String studentId, {String? mentorEmail}) async {
-    _isLoading = true; notifyListeners();
+  Future<void> startNewConversation(String studentId,
+      {String? mentorEmail}) async {
+    _isLoading = true;
+    notifyListeners();
     try {
-      final conv = await SupabaseService.createConversation(
-          studentId, mentorEmail: mentorEmail);
+      final conv = await SupabaseService.createConversation(studentId,
+          mentorEmail: mentorEmail);
       _currentConversation = conv;
       _messages = [];
 
-      final greeting = AIService.generateGreeting();
+      final greeting = AIService.generateGreeting(_currentUser?.name);
       final msg = await SupabaseService.sendMessage(
-        conversationId: conv.id, content: greeting,
-        senderRole: 'assistant', isAiGenerated: true,
+        conversationId: conv.id,
+        content: greeting,
+        senderRole: 'assistant',
+        isAiGenerated: true,
       );
       _messages.add(msg);
       await SupabaseService.markFirstMessageDone(conv.id);
@@ -57,19 +61,22 @@ class ChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ startNewConversation: $e');
     } finally {
-      _isLoading = false; notifyListeners();
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
   Future<void> loadConversation(String conversationId, String studentId) async {
-    _isLoading = true; notifyListeners();
+    _isLoading = true;
+    notifyListeners();
     try {
       final convs = await SupabaseService.getStudentConversations(studentId);
       _currentConversation = convs.firstWhere((c) => c.id == conversationId);
       _messages = await SupabaseService.getMessages(conversationId);
       _subscribeMessages(conversationId);
     } finally {
-      _isLoading = false; notifyListeners();
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -79,18 +86,36 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // ── Student: Send message with FULL RAG PIPELINE ──────────
-  Future<void> sendStudentMessage(
-      String content, String studentId,
+  Future<void> sendStudentMessage(String content, String studentId,
       {List<StudentDocument>? attachedDocs}) async {
     if (_currentConversation == null || content.trim().isEmpty) return;
 
     // 1. Save user message immediately
     final userMsg = await SupabaseService.sendMessage(
       conversationId: _currentConversation!.id,
-      content: content.trim(), senderRole: 'user', senderId: studentId,
+      content: content.trim(),
+      senderRole: 'user',
+      senderId: studentId,
     );
     _messages.add(userMsg);
-    _isTyping = true; notifyListeners();
+
+    // Use the first user message as a short, useful conversation title.
+    if (_currentConversation!.title == 'New Conversation') {
+      final title = _conversationTitle(content);
+      await SupabaseService.updateConversation(
+        _currentConversation!.id,
+        {'title': title},
+      );
+      _currentConversation = _rebuild(_currentConversation!, title: title);
+    } else {
+      await SupabaseService.updateConversation(
+        _currentConversation!.id,
+        <String, dynamic>{},
+      );
+      _currentConversation = _rebuild(_currentConversation!);
+    }
+    _isTyping = true;
+    notifyListeners();
 
     try {
       // 2. Extract student details if first time
@@ -99,14 +124,18 @@ class ChatProvider extends ChangeNotifier {
         if (det != null && det['name']!.isNotEmpty) {
           await SupabaseService.saveStudentDetails(
             conversationId: _currentConversation!.id,
-            name: det['name']!, program: det['program']!,
-            branch: det['branch']!, semester: det['semester']!,
+            name: det['name']!,
+            program: det['program']!,
+            branch: det['branch']!,
+            semester: det['semester']!,
           );
-          _currentConversation = _rebuild(_currentConversation!,
-            studentName: det['name'], studentProgram: det['program'],
-            studentBranch: det['branch'], studentSemester: det['semester'],
+          _currentConversation = _rebuild(
+            _currentConversation!,
+            studentName: det['name'],
+            studentProgram: det['program'],
+            studentBranch: det['branch'],
+            studentSemester: det['semester'],
             detailsCollected: true,
-            title: '${det['name']} - ${det['program']}',
           );
         }
       }
@@ -132,10 +161,10 @@ class ChatProvider extends ChangeNotifier {
         try {
           final queryEmbedding = await AIService.createEmbedding(content);
           final chunks = await SupabaseService.searchSimilarChunks(
-            studentId:      studentId,
+            studentId: studentId,
             queryEmbedding: queryEmbedding,
-            limit:          5,
-            minSimilarity:  0.45,
+            limit: 5,
+            minSimilarity: 0.45,
           );
           if (chunks.isNotEmpty) {
             ragContext = chunks.join('\n\n---\n\n');
@@ -146,30 +175,39 @@ class ChatProvider extends ChangeNotifier {
           // Continue without RAG — Gemini will still answer from general knowledge
         }
       }
-      
+
       // 3c. ═══ STRUCTURED ACADEMIC LOOKUP [NEW] ═══
       final lowerMsg = content.toLowerCase();
       if (lowerMsg.contains('timetable') || lowerMsg.contains('schedule')) {
         final day = DateFormat('EEEE').format(DateTime.now());
         final todaySched = await SupabaseService.getTimetable(studentId, day);
         if (todaySched.isNotEmpty) {
-          ragContext += '\n\n[TODAY\'S TIMETABLE ($day)]\n${jsonEncode(todaySched)}';
+          ragContext +=
+              '\n\n[TODAY\'S TIMETABLE ($day)]\n${jsonEncode(todaySched)}';
         }
       }
-      if (lowerMsg.contains('marks') || lowerMsg.contains('result') || lowerMsg.contains('attendance')) {
-        final records = await SupabaseService.getAcademicRecord(studentId, rollNo: _currentConversation?.studentRollNo);
+      if (lowerMsg.contains('marks') ||
+          lowerMsg.contains('result') ||
+          lowerMsg.contains('attendance')) {
+        final records = await SupabaseService.getAcademicRecord(studentId,
+            rollNo: _currentConversation?.studentRollNo);
         if (records.isNotEmpty) {
-          final attendance = records.where((r) => r['record_type'] == 'attendance').toList();
-          final results = records.where((r) => r['record_type'] == 'result').toList();
+          final attendance =
+              records.where((r) => r['record_type'] == 'attendance').toList();
+          final results =
+              records.where((r) => r['record_type'] == 'result').toList();
 
           if (attendance.isNotEmpty) {
             ragContext += '\n\n[OFFICIAL ATTENDANCE RECORDS]:\n';
             for (var r in attendance) {
-              final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
+              final sub =
+                  r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
               final att = r['attendance_percentage'] ?? 'N/A';
-              ragContext += '- $sub: $att% attendance (Status: ${r['status'] ?? 'N/A'})\n';
+              ragContext +=
+                  '- $sub: $att% attendance (Status: ${r['status'] ?? 'N/A'})\n';
               if (r['total_classes'] != null) {
-                ragContext += '  [Details: ${r['attended_classes']}/${r['total_classes']} classes]\n';
+                ragContext +=
+                    '  [Details: ${r['attended_classes']}/${r['total_classes']} classes]\n';
               }
             }
           }
@@ -177,12 +215,14 @@ class ChatProvider extends ChangeNotifier {
           if (results.isNotEmpty) {
             ragContext += '\n\n[OFFICIAL ACADEMIC RESULTS/MARKS]:\n';
             for (var r in results) {
-              final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
+              final sub =
+                  r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
               final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
               final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
               final grade = r['grade'] ?? 'N/A';
-              final exam  = r['exam_type'] ?? 'Examination';
-              ragContext += '- $sub ($exam): Marks $marks/$total, Grade: $grade\n';
+              final exam = r['exam_type'] ?? 'Examination';
+              ragContext +=
+                  '- $sub ($exam): Marks $marks/$total, Grade: $grade\n';
             }
           }
         }
@@ -190,47 +230,53 @@ class ChatProvider extends ChangeNotifier {
 
       // 4. Send to Gemini with RAG context
       final aiText = await AIService.sendStudentMessage(
-        history:      _messages,
-        newMessage:   content.trim(),
-        studentName:  _currentConversation!.studentName,
-        rollNo:       _currentConversation!.studentRollNo,
-        dept:         _currentConversation!.studentDept,
-        program:      _currentConversation!.studentProgram,
-        branch:       _currentConversation!.studentBranch,
-        semester:     _currentConversation!.studentSemester,
-        skills:       _currentConversation!.studentSkills,
-        interests:    _currentConversation!.studentInterests,
-        ragContext:   ragContext.isNotEmpty ? ragContext : null,
+        history: _messages,
+        newMessage: content.trim(),
+        studentName: _currentConversation!.studentName ?? _currentUser?.name,
+        rollNo: _currentConversation!.studentRollNo,
+        dept: _currentConversation!.studentDept,
+        program: _currentConversation!.studentProgram,
+        branch: _currentConversation!.studentBranch,
+        semester: _currentConversation!.studentSemester,
+        skills: _currentConversation!.studentSkills,
+        interests: _currentConversation!.studentInterests,
+        ragContext: ragContext.isNotEmpty ? ragContext : null,
       );
 
       // 5. Save AI response
       final aiMsg = await SupabaseService.sendMessage(
         conversationId: _currentConversation!.id,
-        content: aiText, senderRole: 'assistant', isAiGenerated: true,
+        content: aiText,
+        senderRole: 'assistant',
+        isAiGenerated: true,
       );
       _messages.add(aiMsg);
-
     } catch (e) {
       debugPrint('❌ sendStudentMessage error: $e');
       final errMsg = await SupabaseService.sendMessage(
         conversationId: _currentConversation!.id,
         content: AIService.friendlyError(e.toString()),
-        senderRole: 'assistant', isAiGenerated: true,
+        senderRole: 'assistant',
+        isAiGenerated: true,
       );
       _messages.add(errMsg);
     } finally {
-      _isTyping = false; notifyListeners();
+      _isTyping = false;
+      notifyListeners();
     }
   }
 
   // ── Mentor ─────────────────────────────────────────────────
   Future<void> loadMentorDashboard(String mentorEmail) async {
-    _isLoading = true; notifyListeners();
+    _isLoading = true;
+    notifyListeners();
     try {
-      _myStudents    = await SupabaseService.getMyStudents(mentorEmail);
-      _conversations = await SupabaseService.getMentorConversations(mentorEmail);
+      _myStudents = await SupabaseService.getMyStudents(mentorEmail);
+      _conversations =
+          await SupabaseService.getMentorConversations(mentorEmail);
     } finally {
-      _isLoading = false; notifyListeners();
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
@@ -240,37 +286,45 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> loadProgressReports(String mentorEmail) async {
-    _loadingProgress = true; notifyListeners();
+    _loadingProgress = true;
+    notifyListeners();
     try {
       final students = await SupabaseService.getMyStudents(mentorEmail);
-      final reports  = <StudentProgressReport>[];
+      final reports = <StudentProgressReport>[];
       for (final s in students) {
         reports.add(await SupabaseService.getStudentProgress(s));
       }
       _progressReports = reports;
     } finally {
-      _loadingProgress = false; notifyListeners();
+      _loadingProgress = false;
+      notifyListeners();
     }
   }
 
   Future<void> loadConversationForMentor(String conversationId) async {
-    _isLoading = true; notifyListeners();
+    _isLoading = true;
+    notifyListeners();
     try {
       final convs = await SupabaseService.getAllConversations();
       _currentConversation = convs.firstWhere((c) => c.id == conversationId);
       _messages = await SupabaseService.getMessages(conversationId);
       _subscribeMessages(conversationId);
     } finally {
-      _isLoading = false; notifyListeners();
+      _isLoading = false;
+      notifyListeners();
     }
   }
 
-  Future<void> sendMentorMessage(String content, String mentorId, String convId) async {
+  Future<void> sendMentorMessage(
+      String content, String mentorId, String convId) async {
     final msg = await SupabaseService.sendMessage(
-      conversationId: convId, content: content.trim(),
-      senderRole: 'mentor', senderId: mentorId,
+      conversationId: convId,
+      content: content.trim(),
+      senderRole: 'mentor',
+      senderId: mentorId,
     );
-    _messages.add(msg); notifyListeners();
+    _messages.add(msg);
+    notifyListeners();
     await SupabaseService.logMentorIntervention(
         conversationId: convId, mentorId: mentorId, type: 'takeover');
   }
@@ -285,36 +339,45 @@ class ChatProvider extends ChangeNotifier {
 
     // 1. Detect if mentor is asking about a specific student
     // Split by spaces, commas, or colons
-    final words = newMessage.split(RegExp(r'[\s,:]+')).where((w) => w.length > 2).toList();
-    
+    final words = newMessage
+        .split(RegExp(r'[\s,:]+'))
+        .where((w) => w.length > 2)
+        .toList();
+
     // Sort words by length descending (longer words are more likely to be unique IDs/names)
     words.sort((a, b) => b.length.compareTo(a.length));
 
     for (final word in words) {
-      final student = await SupabaseService.findStudentByQuery(word, 
-          mentorEmail: _myStudents.isNotEmpty ? _myStudents.first.mentorEmail : null);
-          
+      final student = await SupabaseService.findStudentByQuery(word,
+          mentorEmail:
+              _myStudents.isNotEmpty ? _myStudents.first.mentorEmail : null);
+
       if (student != null) {
-        final records = await SupabaseService.getAcademicRecord(student.id, rollNo: student.rollNumber);
-        
-        ragContext += '\n[!!! CRITICAL: OFFICIAL_COLLEGE_DATABASE_CONTENT !!!]\n';
+        final records = await SupabaseService.getAcademicRecord(student.id,
+            rollNo: student.rollNumber);
+
+        ragContext +=
+            '\n[!!! CRITICAL: OFFICIAL_COLLEGE_DATABASE_CONTENT !!!]\n';
         ragContext += '[DB_SOURCE]: Supabase Verified\n';
         ragContext += '[STUDENT_PROFILE]:\n';
         ragContext += '- REAL_NAME: ${student.name}\n';
         ragContext += '- ROLL_NUMBER: ${student.rollNumber ?? 'N/A'}\n';
         ragContext += '- PROGRAM: ${student.program ?? 'N/A'}\n';
         ragContext += '- SEMESTER: ${student.semester ?? 'N/A'}\n';
-        
+
         if (records.isNotEmpty) {
-          final attendance = records.where((r) => r['record_type'] == 'attendance').toList();
-          final results = records.where((r) => r['record_type'] == 'result').toList();
+          final attendance =
+              records.where((r) => r['record_type'] == 'attendance').toList();
+          final results =
+              records.where((r) => r['record_type'] == 'result').toList();
 
           if (attendance.isNotEmpty) {
             ragContext += '\n[ACADEMIC_ATTENDANCE_TRANSCRIPT]:\n';
             for (var r in attendance) {
               final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown';
               final att = r['attendance_percentage'] ?? 'N/A';
-              ragContext += '- SUBJECT: ${sub.toUpperCase()} | ATTENDANCE: $att% | CLASSES: ${r['attended_classes']}/${r['total_classes']}\n';
+              ragContext +=
+                  '- SUBJECT: ${sub.toUpperCase()} | ATTENDANCE: $att% | CLASSES: ${r['attended_classes']}/${r['total_classes']}\n';
             }
           }
 
@@ -325,30 +388,33 @@ class ChatProvider extends ChangeNotifier {
               final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
               final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
               final grade = r['grade'] ?? 'N/A';
-              final exam  = r['exam_type'] ?? 'Examination';
-              ragContext += '- SUBJECT: ${sub.toUpperCase()} | EXAM: $exam | MARKS: $marks/$total | GRADE: $grade\n';
+              final exam = r['exam_type'] ?? 'Examination';
+              ragContext +=
+                  '- SUBJECT: ${sub.toUpperCase()} | EXAM: $exam | MARKS: $marks/$total | GRADE: $grade\n';
             }
           }
 
-          ragContext += '\n[STRICT_INSTRUCTION]: Use ONLY the subjects and data listed above. If a subject (like OS) is not in the list above, do NOT mention it.\n';
+          ragContext +=
+              '\n[STRICT_INSTRUCTION]: Use ONLY the subjects and data listed above. If a subject (like OS) is not in the list above, do NOT mention it.\n';
         } else {
-          ragContext += '\n[ALERT]: NO SUBJECT-WISE RECORDS FOUND IN DATABASE FOR THIS STUDENT ACCOUNT.\n';
+          ragContext +=
+              '\n[ALERT]: NO SUBJECT-WISE RECORDS FOUND IN DATABASE FOR THIS STUDENT ACCOUNT.\n';
         }
         ragContext += '[!!! END_OF_DATABASE_CONTENT !!!]\n';
-        break; 
+        break;
       }
     }
 
     return await AIService.sendMentorMessage(
-      history:       history,
-      newMessage:    newMessage,
-      mentorName:    mentorName,
-      designation:   _currentUser?.designation,
-      dept:          _currentUser?.department,
-      expertise:     _currentUser?.expertise,
+      history: history,
+      newMessage: newMessage,
+      mentorName: mentorName,
+      designation: _currentUser?.designation,
+      dept: _currentUser?.department,
+      expertise: _currentUser?.expertise,
       totalStudents: _myStudents.length,
-      activeChats:   _conversations.where((c) => c.status == 'active').length,
-      ragContext:    ragContext.isNotEmpty ? ragContext : null,
+      activeChats: _conversations.where((c) => c.status == 'active').length,
+      ragContext: ragContext.isNotEmpty ? ragContext : null,
     );
   }
 
@@ -383,37 +449,90 @@ class ChatProvider extends ChangeNotifier {
   // ── Realtime ───────────────────────────────────────────────
   void _subscribeMessages(String conversationId) {
     _messageChannel?.unsubscribe();
-    _messageChannel = SupabaseService.subscribeToMessages(conversationId, (msg) {
+    _messageChannel =
+        SupabaseService.subscribeToMessages(conversationId, (msg) {
       if (!_messages.any((m) => m.id == msg.id)) {
-        _messages.add(msg); notifyListeners();
+        _messages.add(msg);
+        notifyListeners();
       }
     });
   }
 
   void clearCurrentConversation() {
     _messageChannel?.unsubscribe();
-    _currentConversation = null; _messages = [];
+    _currentConversation = null;
+    _messages = [];
     notifyListeners();
   }
 
-  ConversationModel _rebuild(ConversationModel b, {
-    bool? isFirstDone, bool? detailsCollected,
-    String? studentName, String? studentProgram,
-    String? studentBranch, String? studentSemester, String? title,
-  }) => ConversationModel.fromMap({
-    'id': b.id, 'student_id': b.studentId,
-    'title': title ?? b.title,
-    'is_first_message_done': isFirstDone ?? b.isFirstMessageDone,
-    'student_details_collected': detailsCollected ?? b.studentDetailsCollected,
-    'student_name': studentName ?? b.studentName,
-    'student_program': studentProgram ?? b.studentProgram,
-    'student_branch': studentBranch ?? b.studentBranch,
-    'student_semester': studentSemester ?? b.studentSemester,
-    'mentor_email': b.mentorEmail, 'status': b.status,
-    'created_at': b.createdAt.toIso8601String(),
-    'updated_at': DateTime.now().toIso8601String(),
-  });
+  ConversationModel _rebuild(
+    ConversationModel b, {
+    bool? isFirstDone,
+    bool? detailsCollected,
+    String? studentName,
+    String? studentProgram,
+    String? studentBranch,
+    String? studentSemester,
+    String? title,
+  }) =>
+      ConversationModel.fromMap({
+        'id': b.id,
+        'student_id': b.studentId,
+        'title': title ?? b.title,
+        'is_first_message_done': isFirstDone ?? b.isFirstMessageDone,
+        'student_details_collected':
+            detailsCollected ?? b.studentDetailsCollected,
+        'student_name': studentName ?? b.studentName,
+        'student_program': studentProgram ?? b.studentProgram,
+        'student_branch': studentBranch ?? b.studentBranch,
+        'student_semester': studentSemester ?? b.studentSemester,
+        'mentor_email': b.mentorEmail,
+        'status': b.status,
+        'created_at': b.createdAt.toIso8601String(),
+        'updated_at': DateTime.now().toIso8601String(),
+      });
+
+  String _conversationTitle(String message) {
+    final cleaned = message.replaceAll(RegExp(r'\s+'), ' ').trim();
+    final text = cleaned.toLowerCase();
+    final topics = <String>[];
+
+    if (text.contains('stress') ||
+        text.contains('anxious') ||
+        text.contains('tension') ||
+        text.contains('worried')) {
+      topics.add('Stress & personal support');
+    }
+    if (text.contains('assignment') ||
+        text.contains('exam') ||
+        text.contains('study') ||
+        text.contains('homework')) {
+      topics.add('Assignments & exam preparation');
+    }
+    if (text.contains('timetable') ||
+        text.contains('schedule') ||
+        text.contains('class')) {
+      topics.add('Timetable & classes');
+    }
+    if (text.contains('attendance') ||
+        text.contains('marks') ||
+        text.contains('result')) {
+      topics.add('Marks & attendance');
+    }
+    if (text.contains('career') ||
+        text.contains('job') ||
+        text.contains('internship')) {
+      topics.add('Career guidance');
+    }
+
+    if (topics.isNotEmpty) return topics.take(2).join(' • ');
+    if (cleaned.length <= 34) return cleaned;
+    return '${cleaned.substring(0, 34).trimRight()}...';
+  }
 
   @override
-  void dispose() { _messageChannel?.unsubscribe(); super.dispose(); }
+  void dispose() {
+    _messageChannel?.unsubscribe();
+    super.dispose();
+  }
 }

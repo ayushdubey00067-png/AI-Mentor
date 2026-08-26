@@ -24,8 +24,9 @@ class SupabaseService {
           .eq('id', row['id']);
       return UserModel.fromMap(row);
     } on PostgrestException catch (ex) {
-      if (ex.message.contains('permission') || ex.message.contains('RLS'))
+      if (ex.message.contains('permission') || ex.message.contains('RLS')) {
         throw Exception('RLS_BLOCKED: Run supabase_schema.sql');
+      }
       throw Exception('DB error: ${ex.message}');
     }
   }
@@ -41,8 +42,10 @@ class SupabaseService {
       if (role == 'student' && mentorEmail != null && mentorEmail.trim().isNotEmpty) {
         final m = await _db.from(kUsersTable).select('id')
             .eq('email', mentorEmail.trim().toLowerCase()).eq('role', 'mentor');
-        if (m.isEmpty) throw Exception(
+        if (m.isEmpty) {
+          throw Exception(
             'invalid_mentor: No mentor with email "${mentorEmail.trim()}"');
+        }
       }
       final exists = await _db.from(kUsersTable).select('id').eq('email', e);
       if (exists.isNotEmpty) throw Exception('duplicate_email: Already registered.');
@@ -65,7 +68,9 @@ class SupabaseService {
       throw Exception('Register failed: ${ex.message}');
     } catch (ex) {
       if (ex.toString().contains('duplicate_email') ||
-          ex.toString().contains('invalid_mentor')) rethrow;
+          ex.toString().contains('invalid_mentor')) {
+        rethrow;
+      }
       throw Exception('Register error: $ex');
     }
   }
@@ -383,7 +388,9 @@ class SupabaseService {
     final convs   = await getStudentConversations(student.id);
     final issues  = await getStudentIssues(student.id);
     int totalMsg  = 0;
-    for (final c in convs) totalMsg += await getMessageCount(c.id);
+    for (final c in convs) {
+      totalMsg += await getMessageCount(c.id);
+    }
     return StudentProgressReport(
       student: student, conversations: convs, issues: issues,
       totalMessages: totalMsg,

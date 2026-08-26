@@ -271,11 +271,13 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
   // ══════════════════════════════════════════════════════════
   Widget _classTab(ChatProvider chat) {
     if (chat.isLoading) return _loadingView();
-    if (chat.myStudents.isEmpty) return _emptyView(
+    if (chat.myStudents.isEmpty) {
+      return _emptyView(
       Icons.school_outlined,
       'No students yet',
       'Students appear here when they\nregister using your email address',
     );
+    }
 
     return RefreshIndicator(
       onRefresh: _loadAll,
@@ -697,7 +699,7 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
           ),
           const SizedBox(height: 12),
           DropdownButtonFormField<String>(
-            value: selectedStatus,
+            initialValue: selectedStatus,
             decoration: InputDecoration(
               labelText: 'Update Status',
               labelStyle: GoogleFonts.lato(color: const Color(0xFF6B7280), fontSize: 13),
@@ -736,7 +738,8 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
                 );
                 Navigator.pop(ctx);
                 await _loadIssues(auth.currentUser?.email ?? '');
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(
                   content: Row(children: [
                     const Icon(Icons.check_circle_rounded,
                         color: Colors.white, size: 16),
@@ -748,6 +751,7 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
                 ));
+                }
               },
               child: Text('Send Response', style: GoogleFonts.lato(
                   color: Colors.white, fontWeight: FontWeight.w700)),
@@ -763,9 +767,11 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
   // ══════════════════════════════════════════════════════════
   Widget _progressTab(ChatProvider chat) {
     if (chat.loadingProgress) return _loadingView();
-    if (chat.progressReports.isEmpty) return _emptyView(
+    if (chat.progressReports.isEmpty) {
+      return _emptyView(
         Icons.insights_outlined, 'No data yet',
         'Reports appear once students start chatting');
+    }
 
     final sorted = [...chat.progressReports]
       ..sort((a, b) => b.engagementScore.compareTo(a.engagementScore));

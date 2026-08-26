@@ -22,11 +22,15 @@ void main() {
   print("Test 1 (Short): ${_splitIntoChunksV1(testText)}");
 
   String longText = "";
-  for(int i=0; i<500; i++) longText += "word$i ";
+  for(int i=0; i<500; i++) {
+    longText += "word$i ";
+  }
   print("Test 2 (Long): Chunks: ${_splitIntoChunksV1(longText).length}");
   print("First chunk length: ${_splitIntoChunksV1(longText)[0].split(' ').length} words");
   
   String midText = "";
-  for(int i=0; i<40; i++) midText += "word$i ";
+  for(int i=0; i<40; i++) {
+    midText += "word$i ";
+  }
   print("Test 3 (Mid): Chunks: ${_splitIntoChunksV1(midText)}");
 }

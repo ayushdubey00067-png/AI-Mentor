@@ -308,10 +308,10 @@ class _MentorChatViewScreenState extends State<MentorChatViewScreen> {
           ),
           if (isStudent) ...[
             const SizedBox(width: 8),
-            CircleAvatar(
+            const CircleAvatar(
               radius: 16,
               backgroundColor: AppTheme.accent,
-              child: const Icon(Icons.person, color: Colors.white, size: 16),
+              child: Icon(Icons.person, color: Colors.white, size: 16),
             ),
           ],
         ],
@@ -427,7 +427,7 @@ class _MentorChatViewScreenState extends State<MentorChatViewScreen> {
                     _isMentorMode = false;
                     _messageController.clear();
                   }),
-                  child: Icon(Icons.close,
+                  child: const Icon(Icons.close,
                       size: 18, color: AppTheme.textSecondary),
                 ),
               ],

@@ -20,7 +20,7 @@ class AppTheme {
 
   static ThemeData get theme => ThemeData(
     useMaterial3: true,
-    colorScheme: ColorScheme.light(
+    colorScheme: const ColorScheme.light(
       primary: primary, secondary: accent,
       surface: surface, error: error,
     ),

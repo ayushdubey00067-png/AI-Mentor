@@ -32,7 +32,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   }
 
   @override
-  void dispose() { _tab.dispose(); super.dispose(); }
+  void dispose() {
+    _tab.dispose();
+    super.dispose();
+  }
 
   Future<void> _load() async {
     final auth = context.read<AuthProvider>();
@@ -57,7 +60,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
 
   Future<void> _openConversation(ConversationModel conv) async {
     final auth = context.read<AuthProvider>();
-    await context.read<ChatProvider>()
+    await context
+        .read<ChatProvider>()
         .loadConversation(conv.id, auth.currentUser!.id);
     if (!mounted) return;
     // Close drawer first
@@ -72,8 +76,10 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
       builder: (ctx) => AlertDialog(
         backgroundColor: Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Delete Chat?', style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700)),
-        content: Text('This will permanently delete this conversation and all its messages.',
+        title: Text('Delete Chat?',
+            style: GoogleFonts.playfairDisplay(fontWeight: FontWeight.w700)),
+        content: Text(
+            'This will permanently delete this conversation and all its messages.',
             style: GoogleFonts.lato(fontSize: 14)),
         actions: [
           TextButton(
@@ -84,9 +90,12 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
             onPressed: () => Navigator.pop(ctx, true),
             style: ElevatedButton.styleFrom(
               backgroundColor: Colors.redAccent,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10)),
             ),
-            child: Text('Delete', style: GoogleFonts.lato(color: Colors.white, fontWeight: FontWeight.bold)),
+            child: Text('Delete',
+                style: GoogleFonts.lato(
+                    color: Colors.white, fontWeight: FontWeight.bold)),
           ),
         ],
       ),
@@ -96,7 +105,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
       await context.read<ChatProvider>().deleteConversation(conv.id);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Conversation deleted'), duration: Duration(seconds: 2)),
+          const SnackBar(
+              content: Text('Conversation deleted'),
+              duration: Duration(seconds: 2)),
         );
       }
     }
@@ -115,15 +126,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
       body: Column(children: [
         _buildHeader(auth, chat),
         _buildTabBar(chat),
-        Expanded(child: TabBarView(controller: _tab, children: [
+        Expanded(
+            child: TabBarView(controller: _tab, children: [
           _aiChatTab(chat),
           const StudentDocumentsScreen(),
           const StudentIssueScreen(),
         ])),
       ]),
-      floatingActionButton: _tab.index == 0
-          ? _buildFAB()
-          : null,
+      floatingActionButton: _tab.index == 0 ? _buildFAB() : null,
     );
   }
 
@@ -152,28 +162,36 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
               child: Column(children: [
                 Row(children: [
                   Container(
-                    width: 56, height: 56,
+                    width: 56,
+                    height: 56,
                     decoration: BoxDecoration(
                       color: AppTheme.accent,
                       shape: BoxShape.circle,
                       border: Border.all(
                           color: Colors.white.withOpacity(0.3), width: 2),
-                      boxShadow: [BoxShadow(
-                          color: AppTheme.accent.withOpacity(0.5),
-                          blurRadius: 12, offset: const Offset(0, 4))],
+                      boxShadow: [
+                        BoxShadow(
+                            color: AppTheme.accent.withOpacity(0.5),
+                            blurRadius: 12,
+                            offset: const Offset(0, 4))
+                      ],
                     ),
-                    child: Center(child: Text(initials,
-                        style: GoogleFonts.playfairDisplay(
-                            fontSize: 20, fontWeight: FontWeight.w700,
-                            color: Colors.white))),
+                    child: Center(
+                        child: Text(initials,
+                            style: GoogleFonts.playfairDisplay(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white))),
                   ),
                   const SizedBox(width: 14),
-                  Expanded(child: Column(
+                  Expanded(
+                      child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(user?.name ?? 'Student',
                           style: GoogleFonts.playfairDisplay(
-                              fontSize: 16, fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
                               color: Colors.white),
                           overflow: TextOverflow.ellipsis),
                       Text(user?.email ?? '',
@@ -186,12 +204,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                   GestureDetector(
                     onTap: () => Navigator.of(context).pop(),
                     child: Container(
-                      width: 34, height: 34,
-                      decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(10)),
-                      child: const Icon(Icons.close_rounded,
-                          color: Colors.white, size: 18)),
+                        width: 34,
+                        height: 34,
+                        decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10)),
+                        child: const Icon(Icons.close_rounded,
+                            color: Colors.white, size: 18)),
                   ),
                 ]),
 
@@ -223,19 +242,25 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                       gradient: const LinearGradient(
                           colors: [AppTheme.accent, Color(0xFFE8B84B)]),
                       borderRadius: BorderRadius.circular(14),
-                      boxShadow: [BoxShadow(
-                          color: AppTheme.accent.withOpacity(0.4),
-                          blurRadius: 10, offset: const Offset(0, 4))],
+                      boxShadow: [
+                        BoxShadow(
+                            color: AppTheme.accent.withOpacity(0.4),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4))
+                      ],
                     ),
-                    child: Row(mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.add_rounded,
-                            color: Color(0xFF1A1A1A), size: 18),
-                        const SizedBox(width: 8),
-                        Text('New Chat', style: GoogleFonts.lato(
-                            fontSize: 14, fontWeight: FontWeight.w700,
-                            color: const Color(0xFF1A1A1A))),
-                      ]),
+                    child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.add_rounded,
+                              color: Color(0xFF1A1A1A), size: 18),
+                          const SizedBox(width: 8),
+                          Text('New Chat',
+                              style: GoogleFonts.lato(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF1A1A1A))),
+                        ]),
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -243,7 +268,8 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
             ),
 
             // ── Divider ───────────────────────────────────────
-            Container(height: 1,
+            Container(
+                height: 1,
                 color: Colors.white.withOpacity(0.1),
                 margin: const EdgeInsets.symmetric(horizontal: 20)),
 
@@ -255,13 +281,15 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                     color: Colors.white60, size: 16),
                 const SizedBox(width: 8),
                 Text('Chat History',
-                    style: GoogleFonts.lato(fontSize: 12,
+                    style: GoogleFonts.lato(
+                        fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Colors.white60, letterSpacing: 0.5)),
+                        color: Colors.white60,
+                        letterSpacing: 0.5)),
                 const Spacer(),
                 Text('${chat.conversations.length} chats',
-                    style: GoogleFonts.lato(fontSize: 11,
-                        color: Colors.white38)),
+                    style:
+                        GoogleFonts.lato(fontSize: 11, color: Colors.white38)),
               ]),
             ),
 
@@ -293,17 +321,20 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                   decoration: BoxDecoration(
                       color: Colors.white.withOpacity(0.08),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                          color: Colors.white.withOpacity(0.15))),
-                  child: Row(mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.logout_rounded,
-                          color: Colors.white60, size: 16),
-                      const SizedBox(width: 8),
-                      Text('Logout', style: GoogleFonts.lato(
-                          fontSize: 13, color: Colors.white60,
-                          fontWeight: FontWeight.w600)),
-                    ]),
+                      border:
+                          Border.all(color: Colors.white.withOpacity(0.15))),
+                  child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.logout_rounded,
+                            color: Colors.white60, size: 16),
+                        const SizedBox(width: 8),
+                        Text('Logout',
+                            style: GoogleFonts.lato(
+                                fontSize: 13,
+                                color: Colors.white60,
+                                fontWeight: FontWeight.w600)),
+                      ]),
                 ),
               ),
             ),
@@ -314,36 +345,42 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   }
 
   Widget _drawerChip(String label) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-    decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.2))),
-    child: Text(label, style: GoogleFonts.lato(
-        fontSize: 11, color: Colors.white70, fontWeight: FontWeight.w500)),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.2))),
+        child: Text(label,
+            style: GoogleFonts.lato(
+                fontSize: 11,
+                color: Colors.white70,
+                fontWeight: FontWeight.w500)),
+      );
 
   Widget _drawerEmptyHistory() => Padding(
-    padding: const EdgeInsets.all(24),
-    child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-      Icon(Icons.chat_bubble_outline_rounded,
-          color: Colors.white.withOpacity(0.2), size: 48),
-      const SizedBox(height: 12),
-      Text('No conversations yet',
-          style: GoogleFonts.lato(fontSize: 14,
-              color: Colors.white38), textAlign: TextAlign.center),
-      const SizedBox(height: 8),
-      Text('Start a new chat to begin',
-          style: GoogleFonts.lato(fontSize: 12, color: Colors.white24),
-          textAlign: TextAlign.center),
-    ]),
-  );
+        padding: const EdgeInsets.all(24),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+          Icon(Icons.chat_bubble_outline_rounded,
+              color: Colors.white.withOpacity(0.2), size: 48),
+          const SizedBox(height: 12),
+          Text('No conversations yet',
+              style: GoogleFonts.lato(fontSize: 14, color: Colors.white38),
+              textAlign: TextAlign.center),
+          const SizedBox(height: 8),
+          Text('Start a new chat to begin',
+              style: GoogleFonts.lato(fontSize: 12, color: Colors.white24),
+              textAlign: TextAlign.center),
+        ]),
+      );
 
   Widget _drawerConvTile(ConversationModel conv) {
-    final isActive   = conv.status == 'active';
+    final isActive = conv.status == 'active';
     final isResolved = conv.status == 'resolved';
-    final dotColor   = isResolved ? const Color(0xFF4ADE80)
-        : isActive ? const Color(0xFF60A5FA) : const Color(0xFFFBBF24);
+    final dotColor = isResolved
+        ? const Color(0xFF4ADE80)
+        : isActive
+            ? const Color(0xFF60A5FA)
+            : const Color(0xFFFBBF24);
 
     return GestureDetector(
       onTap: () => _openConversation(conv),
@@ -357,25 +394,31 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
         ),
         child: Row(children: [
           // Status dot
-          Container(width: 8, height: 8,
+          Container(
+              width: 8,
+              height: 8,
               decoration: BoxDecoration(
-                  color: dotColor, shape: BoxShape.circle,
-                  boxShadow: [BoxShadow(color: dotColor.withOpacity(0.6),
-                      blurRadius: 4)])),
+                  color: dotColor,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(color: dotColor.withOpacity(0.6), blurRadius: 4)
+                  ])),
           const SizedBox(width: 12),
-          Expanded(child: Column(
+          Expanded(
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(conv.title,
-                  style: GoogleFonts.lato(fontSize: 13,
-                      fontWeight: FontWeight.w600, color: Colors.white),
-                  overflow: TextOverflow.ellipsis, maxLines: 1),
+                  style: GoogleFonts.lato(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white),
+                  overflow: TextOverflow.ellipsis,
+                  maxLines: 1),
               const SizedBox(height: 2),
               Text(
-                DateFormat('MMM d, h:mm a')
-                    .format(conv.updatedAt.toLocal()),
-                style: GoogleFonts.lato(
-                    fontSize: 11, color: Colors.white38),
+                _formatIst(conv.updatedAt, 'MMM d, h:mm a'),
+                style: GoogleFonts.lato(fontSize: 11, color: Colors.white38),
               ),
             ],
           )),
@@ -390,9 +433,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   // HEADER
   // ══════════════════════════════════════════════════════════
   Widget _buildHeader(AuthProvider auth, ChatProvider chat) {
-    final user      = auth.currentUser;
-    final initials  = _getInitials(user?.name ?? 'S');
-    final greeting  = _getGreeting();
+    final user = auth.currentUser;
+    final initials = _getInitials(user?.name ?? 'S');
+    final greeting = _getGreeting();
 
     return Container(
       decoration: const BoxDecoration(
@@ -413,56 +456,70 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
               GestureDetector(
                 onTap: () => _scaffoldKey.currentState?.openDrawer(),
                 child: Container(
-                  width: 40, height: 40,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
                     color: Colors.white.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                        color: Colors.white.withOpacity(0.2)),
+                    border: Border.all(color: Colors.white.withOpacity(0.2)),
                   ),
                   child: Stack(alignment: Alignment.center, children: [
                     const Icon(Icons.menu_rounded,
                         color: Colors.white, size: 20),
                     // Badge if there are conversations
                     if (chat.conversations.isNotEmpty)
-                      Positioned(top: 8, right: 8,
-                        child: Container(width: 7, height: 7,
-                          decoration: const BoxDecoration(
-                              color: AppTheme.accent,
-                              shape: BoxShape.circle))),
+                      Positioned(
+                          top: 8,
+                          right: 8,
+                          child: Container(
+                              width: 7,
+                              height: 7,
+                              decoration: const BoxDecoration(
+                                  color: AppTheme.accent,
+                                  shape: BoxShape.circle))),
                   ]),
                 ),
               ),
               const SizedBox(width: 14),
-              Expanded(child: Column(
+              Expanded(
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(greeting, style: GoogleFonts.lato(
-                      fontSize: 12, color: Colors.white54,
-                      letterSpacing: 0.3)),
+                  Text(greeting,
+                      style: GoogleFonts.lato(
+                          fontSize: 12,
+                          color: Colors.white54,
+                          letterSpacing: 0.3)),
                   Text(user?.name ?? 'Student',
                       style: GoogleFonts.playfairDisplay(
-                          fontSize: 18, fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                          fontWeight: FontWeight.w700,
                           color: Colors.white),
                       overflow: TextOverflow.ellipsis),
                 ],
               )),
               // Avatar
               Container(
-                width: 42, height: 42,
+                width: 42,
+                height: 42,
                 decoration: BoxDecoration(
                   color: AppTheme.accent,
                   shape: BoxShape.circle,
                   border: Border.all(
                       color: Colors.white.withOpacity(0.3), width: 2),
-                  boxShadow: [BoxShadow(
-                      color: AppTheme.accent.withOpacity(0.4),
-                      blurRadius: 8, offset: const Offset(0, 3))],
+                  boxShadow: [
+                    BoxShadow(
+                        color: AppTheme.accent.withOpacity(0.4),
+                        blurRadius: 8,
+                        offset: const Offset(0, 3))
+                  ],
                 ),
-                child: Center(child: Text(initials,
-                    style: GoogleFonts.playfairDisplay(
-                        fontSize: 16, fontWeight: FontWeight.w700,
-                        color: Colors.white))),
+                child: Center(
+                    child: Text(initials,
+                        style: GoogleFonts.playfairDisplay(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white))),
               ),
             ]),
           ),
@@ -482,13 +539,13 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
                   ],
                   if (user.semester?.isNotEmpty == true) ...[
                     const SizedBox(width: 8),
-                    _headerChip(Icons.calendar_today_rounded,
-                        'Sem ${user.semester!}'),
+                    _headerChip(
+                        Icons.calendar_today_rounded, 'Sem ${user.semester!}'),
                   ],
                   if (user.mentorEmail?.isNotEmpty == true) ...[
                     const SizedBox(width: 8),
-                    _headerChip(Icons.supervisor_account_rounded,
-                        'Mentor linked'),
+                    _headerChip(
+                        Icons.supervisor_account_rounded, 'Mentor linked'),
                   ],
                 ]),
               ),
@@ -498,18 +555,19 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 14, 16, 18),
             child: Row(children: [
-              _statPill('${chat.conversations.length}',
-                  'Chats', Icons.chat_bubble_rounded,
-                  const Color(0xFF60A5FA)),
+              _statPill('${chat.conversations.length}', 'Chats',
+                  Icons.chat_bubble_rounded, const Color(0xFF60A5FA)),
               const SizedBox(width: 10),
               _statPill(
                   '${chat.conversations.where((c) => c.status == 'resolved').length}',
-                  'Resolved', Icons.check_circle_rounded,
+                  'Resolved',
+                  Icons.check_circle_rounded,
                   const Color(0xFF4ADE80)),
               const SizedBox(width: 10),
               _statPill(
                   '${chat.conversations.where((c) => c.status == 'active').length}',
-                  'Active', Icons.radio_button_checked_rounded,
+                  'Active',
+                  Icons.radio_button_checked_rounded,
                   AppTheme.accentLight),
             ]),
           ),
@@ -519,21 +577,25 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   }
 
   Widget _headerChip(IconData icon, String label) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-    decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.2))),
-    child: Row(mainAxisSize: MainAxisSize.min, children: [
-      Icon(icon, size: 12, color: Colors.white70),
-      const SizedBox(width: 5),
-      Text(label, style: GoogleFonts.lato(fontSize: 11,
-          color: Colors.white70, fontWeight: FontWeight.w500)),
-    ]),
-  );
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+            color: Colors.white.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.2))),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(icon, size: 12, color: Colors.white70),
+          const SizedBox(width: 5),
+          Text(label,
+              style: GoogleFonts.lato(
+                  fontSize: 11,
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w500)),
+        ]),
+      );
 
   Widget _statPill(String value, String label, IconData icon, Color color) =>
-      Expanded(child: Container(
+      Expanded(
+          child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 8),
         decoration: BoxDecoration(
           color: color.withOpacity(0.12),
@@ -543,11 +605,14 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
         child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(icon, size: 14, color: color),
           const SizedBox(width: 6),
-          Text(value, style: GoogleFonts.lato(
-              fontSize: 15, fontWeight: FontWeight.w700, color: Colors.white)),
+          Text(value,
+              style: GoogleFonts.lato(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
           const SizedBox(width: 4),
-          Text(label, style: GoogleFonts.lato(
-              fontSize: 10, color: Colors.white54)),
+          Text(label,
+              style: GoogleFonts.lato(fontSize: 10, color: Colors.white54)),
         ]),
       ));
 
@@ -555,51 +620,59 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   // TAB BAR
   // ══════════════════════════════════════════════════════════
   Widget _buildTabBar(ChatProvider chat) => Container(
-    decoration: const BoxDecoration(
-      color: Colors.white,
-      boxShadow: [BoxShadow(
-          color: Color(0x10000000), blurRadius: 8,
-          offset: Offset(0, 2))],
-    ),
-    child: TabBar(
-      controller: _tab,
-      labelColor: AppTheme.primary,
-      unselectedLabelColor: const Color(0xFF9CA3AF),
-      indicatorColor: AppTheme.primary,
-      indicatorWeight: 3,
-      indicatorSize: TabBarIndicatorSize.tab,
-      dividerColor: Colors.transparent,
-      labelStyle: GoogleFonts.lato(
-          fontSize: 12, fontWeight: FontWeight.w700),
-      unselectedLabelStyle: GoogleFonts.lato(fontSize: 12),
-      tabs: [
-        Tab(height: 50, child: _tabItem(
-            Icons.smart_toy_rounded, 'AI Chat',
-            badge: chat.conversations.isNotEmpty
-                ? '${chat.conversations.length}' : null)),
-        const Tab(height: 50, child: _TabItem(
-            Icons.folder_rounded, 'Documents')),
-        const Tab(height: 50, child: _TabItem(
-            Icons.report_problem_outlined, 'Issues')),
-      ],
-    ),
-  );
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          boxShadow: [
+            BoxShadow(
+                color: Color(0x10000000), blurRadius: 8, offset: Offset(0, 2))
+          ],
+        ),
+        child: TabBar(
+          controller: _tab,
+          labelColor: AppTheme.primary,
+          unselectedLabelColor: const Color(0xFF9CA3AF),
+          indicatorColor: AppTheme.primary,
+          indicatorWeight: 3,
+          indicatorSize: TabBarIndicatorSize.tab,
+          dividerColor: Colors.transparent,
+          labelStyle:
+              GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w700),
+          unselectedLabelStyle: GoogleFonts.lato(fontSize: 12),
+          tabs: [
+            Tab(
+                height: 50,
+                child: _tabItem(Icons.smart_toy_rounded, 'AI Chat',
+                    badge: chat.conversations.isNotEmpty
+                        ? '${chat.conversations.length}'
+                        : null)),
+            const Tab(
+                height: 50, child: _TabItem(Icons.folder_rounded, 'Documents')),
+            const Tab(
+                height: 50,
+                child: _TabItem(Icons.report_problem_outlined, 'Issues')),
+          ],
+        ),
+      );
 
   Widget _tabItem(IconData icon, String label, {String? badge}) =>
       Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Stack(alignment: Alignment.topRight, children: [
           Icon(icon, size: 20),
           if (badge != null)
-            Positioned(top: -3, right: -6,
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                    horizontal: 5, vertical: 1),
-                decoration: BoxDecoration(
-                    color: AppTheme.primary,
-                    borderRadius: BorderRadius.circular(10)),
-                child: Text(badge, style: GoogleFonts.lato(
-                    fontSize: 8, color: Colors.white,
-                    fontWeight: FontWeight.w700)))),
+            Positioned(
+                top: -3,
+                right: -6,
+                child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                    decoration: BoxDecoration(
+                        color: AppTheme.primary,
+                        borderRadius: BorderRadius.circular(10)),
+                    child: Text(badge,
+                        style: GoogleFonts.lato(
+                            fontSize: 8,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700)))),
         ]),
         const SizedBox(height: 3),
         Text(label),
@@ -610,8 +683,9 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   // ══════════════════════════════════════════════════════════
   Widget _aiChatTab(ChatProvider chat) {
     if (chat.isLoading) {
-      return const Center(child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation(AppTheme.primary)));
+      return const Center(
+          child: CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation(AppTheme.primary)));
     }
     if (chat.conversations.isEmpty) return _emptyChat();
 
@@ -626,112 +700,128 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   }
 
   Widget _emptyChat() => SingleChildScrollView(
-    child: Padding(
-      padding: const EdgeInsets.fromLTRB(24, 40, 24, 40),
-      child: Column(children: [
-        // Hero illustration
-        Container(
-          width: 120, height: 120,
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                AppTheme.primary.withOpacity(0.1),
-                AppTheme.primary.withOpacity(0.05),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(24, 40, 24, 40),
+          child: Column(children: [
+            // Hero illustration
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    AppTheme.primary.withOpacity(0.1),
+                    AppTheme.primary.withOpacity(0.05),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                shape: BoxShape.circle,
+                border: Border.all(
+                    color: AppTheme.primary.withOpacity(0.15), width: 2),
+              ),
+              child: const Icon(Icons.smart_toy_rounded,
+                  size: 52, color: AppTheme.primary),
             ),
-            shape: BoxShape.circle,
-            border: Border.all(
-                color: AppTheme.primary.withOpacity(0.15), width: 2),
-          ),
-          child: const Icon(Icons.smart_toy_rounded,
-              size: 52, color: AppTheme.primary),
-        ),
-        const SizedBox(height: 24),
-        Text('Your AI Academic Assistant',
-            style: GoogleFonts.playfairDisplay(
-                fontSize: 22, fontWeight: FontWeight.w700,
-                color: const Color(0xFF111827)),
-            textAlign: TextAlign.center),
-        const SizedBox(height: 10),
-        Text(
-          'Ask anything about your academics,\n'
-          'career, timetable, or college life.',
-          style: GoogleFonts.lato(fontSize: 14,
-              color: const Color(0xFF6B7280), height: 1.6),
-          textAlign: TextAlign.center,
-        ),
-        const SizedBox(height: 32),
-
-        // Feature cards
-        _featureCard('📅', 'Timetable',
-            'Ask "What are my classes today?" after uploading timetable'),
-        const SizedBox(height: 10),
-        _featureCard('📊', 'Marks & Attendance',
-            'Upload marksheet to get subject-wise analysis'),
-        const SizedBox(height: 10),
-        _featureCard('🚀', 'Career Guidance',
-            'Get personalized career paths for your branch'),
-        const SizedBox(height: 10),
-        _featureCard('💬', 'Personal Support',
-            'Stress management, study plans, and motivation'),
-
-        const SizedBox(height: 36),
-        GestureDetector(
-          onTap: _startNewChat,
-          child: Container(
-            width: double.infinity, height: 56,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                  colors: [Color(0xFF0F1C3F), Color(0xFF1A2B5F)]),
-              borderRadius: BorderRadius.circular(16),
-              boxShadow: [BoxShadow(
-                  color: AppTheme.primary.withOpacity(0.4),
-                  blurRadius: 16, offset: const Offset(0, 6))],
+            const SizedBox(height: 24),
+            Text('Your AI Academic Assistant',
+                style: GoogleFonts.playfairDisplay(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827)),
+                textAlign: TextAlign.center),
+            const SizedBox(height: 10),
+            Text(
+              'Ask anything about your academics,\n'
+              'career, timetable, or college life.',
+              style: GoogleFonts.lato(
+                  fontSize: 14, color: const Color(0xFF6B7280), height: 1.6),
+              textAlign: TextAlign.center,
             ),
-            child: Row(mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.chat_rounded,
-                    color: Colors.white, size: 20),
-                const SizedBox(width: 10),
-                Text('Start AI Chat', style: GoogleFonts.lato(
-                    fontSize: 16, fontWeight: FontWeight.w700,
-                    color: Colors.white)),
-              ]),
-          ),
-        ),
-      ]),
-    ),
-  );
+            const SizedBox(height: 32),
 
-  Widget _featureCard(String emoji, String title, String desc) =>
-      Container(
+            // Feature cards
+            _featureCard('📅', 'Timetable',
+                'Ask "What are my classes today?" after uploading timetable'),
+            const SizedBox(height: 10),
+            _featureCard('📊', 'Marks & Attendance',
+                'Upload marksheet to get subject-wise analysis'),
+            const SizedBox(height: 10),
+            _featureCard('🚀', 'Career Guidance',
+                'Get personalized career paths for your branch'),
+            const SizedBox(height: 10),
+            _featureCard('💬', 'Personal Support',
+                'Stress management, study plans, and motivation'),
+
+            const SizedBox(height: 36),
+            GestureDetector(
+              onTap: _startNewChat,
+              child: Container(
+                width: double.infinity,
+                height: 56,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                      colors: [Color(0xFF0F1C3F), Color(0xFF1A2B5F)]),
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                        color: AppTheme.primary.withOpacity(0.4),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6))
+                  ],
+                ),
+                child:
+                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                  const Icon(Icons.chat_rounded, color: Colors.white, size: 20),
+                  const SizedBox(width: 10),
+                  Text('Start AI Chat',
+                      style: GoogleFonts.lato(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white)),
+                ]),
+              ),
+            ),
+          ]),
+        ),
+      );
+
+  Widget _featureCard(String emoji, String title, String desc) => Container(
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(
-              color: Colors.black.withOpacity(0.04),
-              blurRadius: 8, offset: const Offset(0, 2))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2))
+          ],
         ),
         child: Row(children: [
-          Container(width: 44, height: 44,
-            decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.07),
-                borderRadius: BorderRadius.circular(12)),
-            child: Center(child: Text(emoji,
-                style: const TextStyle(fontSize: 20)))),
+          Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                  color: AppTheme.primary.withOpacity(0.07),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Center(
+                  child: Text(emoji, style: const TextStyle(fontSize: 20)))),
           const SizedBox(width: 14),
-          Expanded(child: Column(
+          Expanded(
+              child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(title, style: GoogleFonts.lato(
-                  fontSize: 14, fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827))),
-              Text(desc, style: GoogleFonts.lato(
-                  fontSize: 12, color: const Color(0xFF6B7280),
-                  height: 1.4)),
+              Text(title,
+                  style: GoogleFonts.lato(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF111827))),
+              Text(desc,
+                  style: GoogleFonts.lato(
+                      fontSize: 12,
+                      color: const Color(0xFF6B7280),
+                      height: 1.4)),
             ],
           )),
         ]),
@@ -748,34 +838,42 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
     final c = colors[index % colors.length];
 
     final isResolved = conv.status == 'resolved';
-    final isFlagged  = conv.status == 'flagged';
-    final statusColor = isResolved ? const Color(0xFF22C55E)
-        : isFlagged ? const Color(0xFFF59E0B) : c[1];
+    final isFlagged = conv.status == 'flagged';
+    final statusColor = isResolved
+        ? const Color(0xFF22C55E)
+        : isFlagged
+            ? const Color(0xFFF59E0B)
+            : c[1];
 
     return GestureDetector(
       onTap: () async {
         final auth = context.read<AuthProvider>();
-        await context.read<ChatProvider>()
+        await context
+            .read<ChatProvider>()
             .loadConversation(conv.id, auth.currentUser!.id);
         if (!mounted) return;
-        Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => const StudentChatScreen()));
+        Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const StudentChatScreen()));
       },
       child: Container(
         margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
-          boxShadow: [BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 12, offset: const Offset(0, 4))],
+          boxShadow: [
+            BoxShadow(
+                color: Colors.black.withOpacity(0.05),
+                blurRadius: 12,
+                offset: const Offset(0, 4))
+          ],
         ),
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(children: [
             // Icon box
             Container(
-              width: 50, height: 50,
+              width: 50,
+              height: 50,
               decoration: BoxDecoration(
                 color: c[0],
                 borderRadius: BorderRadius.circular(14),
@@ -783,20 +881,23 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
               child: Icon(Icons.smart_toy_rounded, color: c[1], size: 24),
             ),
             const SizedBox(width: 14),
-            Expanded(child: Column(
+            Expanded(
+                child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(conv.title, style: GoogleFonts.lato(
-                    fontSize: 14, fontWeight: FontWeight.w700,
-                    color: const Color(0xFF111827)),
-                    overflow: TextOverflow.ellipsis, maxLines: 1),
+                Text(conv.title,
+                    style: GoogleFonts.lato(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF111827)),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1),
                 const SizedBox(height: 4),
                 Row(children: [
                   const Icon(Icons.access_time_rounded,
                       size: 12, color: Color(0xFF9CA3AF)),
                   const SizedBox(width: 4),
-                  Text(DateFormat('MMM d • h:mm a')
-                      .format(conv.updatedAt.toLocal()),
+                  Text(_formatIst(conv.updatedAt, 'MMM d • h:mm a'),
                       style: GoogleFonts.lato(
                           fontSize: 11, color: const Color(0xFF9CA3AF))),
                 ]),
@@ -804,23 +905,24 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
             )),
             // Status badge
             Container(
-              padding: const EdgeInsets.symmetric(
-                  horizontal: 10, vertical: 5),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
               decoration: BoxDecoration(
                   color: statusColor.withOpacity(0.1),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: statusColor.withOpacity(0.3))),
+                  border: Border.all(color: statusColor.withOpacity(0.3))),
               child: Text(conv.status.toUpperCase(),
                   style: GoogleFonts.lato(
-                      fontSize: 9, fontWeight: FontWeight.w700,
-                      color: statusColor, letterSpacing: 0.5)),
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                      color: statusColor,
+                      letterSpacing: 0.5)),
             ),
             const SizedBox(width: 8),
             // Delete button
             IconButton(
               onPressed: () => _deleteConv(conv),
-              icon: Icon(Icons.delete_outline_rounded, color: Colors.red.withOpacity(0.5), size: 18),
+              icon: Icon(Icons.delete_outline_rounded,
+                  color: Colors.red.withOpacity(0.5), size: 18),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
               splashRadius: 20,
@@ -836,44 +938,58 @@ class _StudentHomeScreenState extends State<StudentHomeScreen>
   // FAB
   // ══════════════════════════════════════════════════════════
   Widget _buildFAB() => Container(
-    decoration: BoxDecoration(
-      gradient: const LinearGradient(
-          colors: [AppTheme.accent, Color(0xFFE8B84B)]),
-      borderRadius: BorderRadius.circular(16),
-      boxShadow: [BoxShadow(
-          color: AppTheme.accent.withOpacity(0.5),
-          blurRadius: 16, offset: const Offset(0, 6))],
-    ),
-    child: Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: _startNewChat,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            const Icon(Icons.add_rounded,
-                color: Color(0xFF1A1A1A), size: 20),
-            const SizedBox(width: 8),
-            Text('New Chat', style: GoogleFonts.lato(
-                fontSize: 14, fontWeight: FontWeight.w700,
-                color: const Color(0xFF1A1A1A))),
-          ]),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(
+              colors: [AppTheme.accent, Color(0xFFE8B84B)]),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [
+            BoxShadow(
+                color: AppTheme.accent.withOpacity(0.5),
+                blurRadius: 16,
+                offset: const Offset(0, 6))
+          ],
         ),
-      ),
-    ),
-  );
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: _startNewChat,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                const Icon(Icons.add_rounded,
+                    color: Color(0xFF1A1A1A), size: 20),
+                const SizedBox(width: 8),
+                Text('New Chat',
+                    style: GoogleFonts.lato(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: const Color(0xFF1A1A1A))),
+              ]),
+            ),
+          ),
+        ),
+      );
 
   // ── Helpers ───────────────────────────────────────────────
-  String _getInitials(String name) => name.trim().split(' ')
+  String _getInitials(String name) => name
+      .trim()
+      .split(' ')
       .map((w) => w.isNotEmpty ? w[0] : '')
-      .take(2).join().toUpperCase();
+      .take(2)
+      .join()
+      .toUpperCase();
 
   String _getGreeting() {
     final h = DateTime.now().hour;
     if (h < 12) return 'Good morning! 🌤️';
     if (h < 17) return 'Good afternoon! ☀️';
     return 'Good evening! 🌙';
+  }
+
+  String _formatIst(DateTime value, String pattern) {
+    final ist = value.toUtc().add(const Duration(hours: 5, minutes: 30));
+    return DateFormat(pattern).format(ist);
   }
 }
 
@@ -885,11 +1001,11 @@ class _TabItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Icon(icon, size: 20),
-      const SizedBox(height: 3),
-      Text(label),
-    ],
-  );
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(icon, size: 20),
+          const SizedBox(height: 3),
+          Text(label),
+        ],
+      );
 }

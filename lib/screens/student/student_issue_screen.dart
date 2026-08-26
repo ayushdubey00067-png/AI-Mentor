@@ -87,7 +87,8 @@ class _StudentIssueScreenState extends State<StudentIssueScreen>
   // ── My Issues List ─────────────────────────────────────────
   Widget _myIssuesList() {
     if (_loading) return const Center(child: CircularProgressIndicator());
-    if (_myIssues.isEmpty) return Center(
+    if (_myIssues.isEmpty) {
+      return Center(
       child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         Icon(Icons.inbox_outlined, size: 56,
             color: AppTheme.textSecondary.withOpacity(0.4)),
@@ -100,6 +101,7 @@ class _StudentIssueScreenState extends State<StudentIssueScreen>
             style: GoogleFonts.lato(fontSize: 13, color: AppTheme.textSecondary)),
       ]),
     );
+    }
 
     return RefreshIndicator(
       onRefresh: _loadIssues,
@@ -333,7 +335,7 @@ class _IssueFormState extends State<_IssueForm> {
           // Category
           _lbl('Issue Category *'),
           DropdownButtonFormField<String>(
-            value: _category,
+            initialValue: _category,
             decoration: _deco('Select category', Icons.category_outlined),
             items: _categories.map((c) => DropdownMenuItem(
               value: c['value'], child: Text(c['label']!,
@@ -345,7 +347,7 @@ class _IssueFormState extends State<_IssueForm> {
           // Priority
           _lbl('Priority *'),
           DropdownButtonFormField<String>(
-            value: _priority,
+            initialValue: _priority,
             decoration: _deco('Select priority', Icons.flag_outlined),
             items: _priorities.map((p) => DropdownMenuItem(
               value: p['value'], child: Text(p['label']!,

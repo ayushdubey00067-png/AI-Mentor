@@ -35,12 +35,14 @@ class AIService {
         throw Exception('RATE_LIMIT: AI is currently overloaded.');
       }
       if (res.status == 404) {
-        throw Exception('NOT_FOUND: Edge function "chat" not found. Did you run "supabase functions deploy chat"?');
+        throw Exception(
+            'NOT_FOUND: Edge function "chat" not found. Did you run "supabase functions deploy chat"?');
       }
       if (res.status == 500) {
         final errorData = res.data as Map<String, dynamic>?;
         if (errorData?['error'] == 'MISSING_API_KEY') {
-          throw Exception('CONFIG_ERROR: API Keys not set in Supabase secrets. Run "supabase secrets set GEMINI_API_KEYS=...".');
+          throw Exception(
+              'CONFIG_ERROR: API Keys not set in Supabase secrets. Run "supabase secrets set GEMINI_API_KEYS=...".');
         }
       }
 
@@ -50,7 +52,8 @@ class AIService {
       if (e is FunctionException && e.status == 429) {
         throw Exception('RATE_LIMIT: Model $model hit quota.');
       }
-      if (e is TimeoutException) throw Exception('NETWORK_ERROR: Request timed out');
+      if (e is TimeoutException)
+        throw Exception('NETWORK_ERROR: Request timed out');
       rethrow;
     }
   }
@@ -83,7 +86,8 @@ class AIService {
     }
   }
 
-  static Future<List<List<double>>> createBatchEmbeddings(List<String> chunks) async {
+  static Future<List<List<double>>> createBatchEmbeddings(
+      List<String> chunks) async {
     if (chunks.isEmpty) return [];
     try {
       final List<Map<String, dynamic>> requests = [];
@@ -129,8 +133,8 @@ class AIService {
   }) async {
     final prompt = customPrompt ??
         'You are extracting text from a college document.\n'
-        'Document type: $docType\n\n'
-        'Extract ALL text completely and accurately.';
+            'Document type: $docType\n\n'
+            'Extract ALL text completely and accurately.';
 
     try {
       final res = await _invokeFunction(
@@ -155,7 +159,8 @@ class AIService {
       );
 
       final data = jsonDecode(res.body);
-      final text = data['candidates']?[0]['content']?['parts']?[0]['text'] as String?;
+      final text =
+          data['candidates']?[0]['content']?['parts']?[0]['text'] as String?;
       return text?.trim() ?? '';
     } catch (e) {
       debugPrint('❌ analyzeDocumentImage: $e');
@@ -256,19 +261,28 @@ class AIService {
             'systemPrompt': systemPrompt,
             'contents': contents,
             'safetySettings': [
-              {'category': 'HARM_CATEGORY_HARASSMENT', 'threshold': 'BLOCK_ONLY_HIGH'},
-              {'category': 'HARM_CATEGORY_HATE_SPEECH', 'threshold': 'BLOCK_ONLY_HIGH'},
+              {
+                'category': 'HARM_CATEGORY_HARASSMENT',
+                'threshold': 'BLOCK_ONLY_HIGH'
+              },
+              {
+                'category': 'HARM_CATEGORY_HATE_SPEECH',
+                'threshold': 'BLOCK_ONLY_HIGH'
+              },
             ],
           },
         );
 
         final data = jsonDecode(res.body);
-        final text = data['candidates']?[0]['content']?['parts']?[0]['text'] as String?;
+        final text =
+            data['candidates']?[0]['content']?['parts']?[0]['text'] as String?;
         return text?.trim() ?? '⚠️ AI response was empty.';
       } catch (e) {
         lastError = e.toString();
         // Catch 429 status code or our custom RATE_LIMIT string
-        if (lastError.contains('RATE_LIMIT') || lastError.contains('429') || lastError.contains('RESOURCE_EXHAUSTED')) {
+        if (lastError.contains('RATE_LIMIT') ||
+            lastError.contains('429') ||
+            lastError.contains('RESOURCE_EXHAUSTED')) {
           debugPrint('⏳ Model $model hit rate limit. Trying fallback...');
           continue;
         }
@@ -285,7 +299,8 @@ class AIService {
   static List<Map<String, dynamic>> _buildContents(
       List<MessageModel> history, String newMessage) {
     final contents = <Map<String, dynamic>>[];
-    final recentHistory = history.length > 30 ? history.sublist(history.length - 30) : history;
+    final recentHistory =
+        history.length > 30 ? history.sublist(history.length - 30) : history;
 
     for (final m in recentHistory) {
       if (!m.isUser && !m.isAssistant) continue;
@@ -305,9 +320,10 @@ class AIService {
     return contents;
   }
 
-  static Future<Map<String, String>?> extractStudentDetails(String message) async {
+  static Future<Map<String, String>?> extractStudentDetails(
+      String message) async {
     final modelsToTry = [kGeminiChatModel, ...kGeminiFallbacks];
-    
+
     for (final model in modelsToTry) {
       try {
         final res = await _invokeFunction(
@@ -327,14 +343,19 @@ class AIService {
           },
         );
         final data = jsonDecode(res.body);
-        final text = data['candidates'][0]['content']['parts'][0]['text'] as String;
-        final clean = text.replaceAll('```json', '').replaceAll('```', '').trim();
+        final text =
+            data['candidates'][0]['content']['parts'][0]['text'] as String;
+        final clean =
+            text.replaceAll('```json', '').replaceAll('```', '').trim();
         final det = jsonDecode(clean) as Map<String, dynamic>;
         return det.map((k, v) => MapEntry(k, v.toString()));
       } catch (e) {
         final errStr = e.toString();
-        if (errStr.contains('RATE_LIMIT') || errStr.contains('429') || errStr.contains('RESOURCE_EXHAUSTED')) {
-          debugPrint('⏳ Extraction: Model $model hit rate limit. Trying fallback...');
+        if (errStr.contains('RATE_LIMIT') ||
+            errStr.contains('429') ||
+            errStr.contains('RESOURCE_EXHAUSTED')) {
+          debugPrint(
+              '⏳ Extraction: Model $model hit rate limit. Trying fallback...');
           continue;
         }
         return null;
@@ -343,14 +364,19 @@ class AIService {
     return null;
   }
 
-  static String generateGreeting() => kFirstMessage;
+  static String generateGreeting(String? userName) =>
+      buildFirstMessage(userName);
 
   static String friendlyError(String e) {
-    if (e.contains('RATE_LIMIT')) return '⏳ **AI is busy.** Please wait a minute and try again.';
-    if (e.contains('NETWORK_ERROR')) return '🌐 **Network issue.** Check your connection.';
-    if (e.contains('NOT_FOUND')) return '🚀 **Backend not ready.** Function "chat" is not deployed yet.';
-    if (e.contains('CONFIG_ERROR')) return '🔑 **Config Error.** Gemini API keys are missing in Supabase secrets.';
-    
+    if (e.contains('RATE_LIMIT'))
+      return '⏳ **AI is busy.** Please wait a minute and try again.';
+    if (e.contains('NETWORK_ERROR'))
+      return '🌐 **Network issue.** Check your connection.';
+    if (e.contains('NOT_FOUND'))
+      return '🚀 **Backend not ready.** Function "chat" is not deployed yet.';
+    if (e.contains('CONFIG_ERROR'))
+      return '🔑 **Config Error.** Gemini API keys are missing in Supabase secrets.';
+
     // Fallback: show the actual error for easier debugging
     return '❌ **Something went wrong.**\n\nDetail: ${e.replaceAll('Exception:', '').trim()}';
   }
@@ -361,4 +387,4 @@ class http_Response_Mock {
   final int statusCode;
   final String body;
   http_Response_Mock(this.statusCode, this.body);
-}
+}
