@@ -341,6 +341,10 @@ $ragContext
 [INSTRUCTION]:
 Generate a structured report based EXCLUSIVELY on the [DATABASE DATA_BLOCK] above.
 If the data contradicts your internal knowledge, the database is ALWAYS right.
+When [ASSIGNED_STUDENT_LIST_FROM_MY_CLASS_TAB] is present, answer roster/list requests
+using every listed student exactly once in this format: Name - Roll Number. Do not add
+students from memory or omit assigned students. If the list says no students are assigned,
+state that clearly.
 """);
   }
 

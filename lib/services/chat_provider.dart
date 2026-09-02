@@ -337,20 +337,42 @@ class ChatProvider extends ChangeNotifier {
   }) async {
     String ragContext = '';
 
+    final normalizedMessage = newMessage.toLowerCase();
+    final isStudentListRequest = RegExp(r'\b(list|roster|students?|class)\b')
+            .hasMatch(normalizedMessage) &&
+        RegExp(r'\b(student|students|class|assigned|roll|name)\b')
+            .hasMatch(normalizedMessage);
+
+    if (isStudentListRequest) {
+      ragContext = '\n[ASSIGNED_STUDENT_LIST_FROM_MY_CLASS_TAB]\n'
+          'This is the complete list of students assigned to this mentor.\n';
+      if (_myStudents.isEmpty) {
+        ragContext += '- No students are currently assigned.\n';
+      } else {
+        for (final student in _myStudents) {
+          ragContext +=
+              '- NAME: ${student.name} | ROLL_NUMBER: ${student.rollNumber ?? 'N/A'}\n';
+        }
+      }
+      ragContext += '[END_ASSIGNED_STUDENT_LIST]\n';
+    }
+
     // 1. Detect if mentor is asking about a specific student
     // Split by spaces, commas, or colons
-    final words = newMessage
-        .split(RegExp(r'[\s,:]+'))
-        .where((w) => w.length > 2)
-        .toList();
+    final words = isStudentListRequest
+        ? <String>[]
+        : newMessage
+            .split(RegExp(r'[\s,:]+'))
+            .where((w) => w.length > 2)
+            .toList();
 
     // Sort words by length descending (longer words are more likely to be unique IDs/names)
     words.sort((a, b) => b.length.compareTo(a.length));
 
     for (final word in words) {
       final student = await SupabaseService.findStudentByQuery(word,
-          mentorEmail:
-              _myStudents.isNotEmpty ? _myStudents.first.mentorEmail : null);
+          mentorEmail: _currentUser?.email ??
+              (_myStudents.isNotEmpty ? _myStudents.first.mentorEmail : null));
 
       if (student != null) {
         final records = await SupabaseService.getAcademicRecord(student.id,
