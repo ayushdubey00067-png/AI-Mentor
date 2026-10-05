@@ -1,17 +1,18 @@
 // lib/screens/student/student_documents_screen.dart
-import 'dart:convert';
-import 'dart:async';
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../../models/models.dart';
-import '../../services/ai_service.dart';
 import '../../services/auth_provider.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/app_theme.dart';
+import '../../utils/file_opener.dart';
+import '../../widgets/document_viewer_dialog.dart';
+import '../../widgets/timetable_grid_view.dart';
+import '../../widgets/timetable_sync_dialog.dart';
+import '../../widgets/teacher_selector_dialog.dart';
+import '../../utils/mru_timetable_data.dart';
 
 class StudentDocumentsScreen extends StatefulWidget {
   const StudentDocumentsScreen({super.key});
@@ -21,14 +22,15 @@ class StudentDocumentsScreen extends StatefulWidget {
 }
 
 class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
-  List<StudentDocument> _docs      = [];
-  bool   _loading    = false;
-  bool   _uploading  = false;
-  String _uploadStatus = '';
-  int    _uploadStep   = 0; // 0=idle 1=saving 2=extracting 3=chunking 4=done
+  List<StudentDocument> _docs = [];
+  bool _loading = false;
+
+  // Academic Session & Term Filter State
+  String _selectedAcademicYear = '2026-2027';
+  String _selectedTerm = 'odd'; // 'odd' (Jun-Dec) or 'even' (Jan-May)
+  static const List<String> _academicYears = ['2026-2027', '2025-2026', '2024-2025'];
 
   static const List<Map<String, dynamic>> _docTypes = [
-    {'value': 'timetable',         'label': 'Timetable',          'emoji': '📅', 'color': Color(0xFF3B82F6)},
     {'value': 'academic_calendar', 'label': 'Academic Calendar',  'emoji': '🗓️', 'color': Color(0xFF8B5CF6)},
     {'value': 'syllabus',          'label': 'Syllabus',           'emoji': '📚', 'color': Color(0xFF10B981)},
     {'value': 'marksheet',         'label': 'Marksheet / Marks',  'emoji': '📊', 'color': Color(0xFFF59E0B)},
@@ -40,645 +42,570 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
   @override
   void initState() {
     super.initState();
+    // Auto-detect term based on current date
+    final now = DateTime.now();
+    if (now.month >= 6) {
+      _selectedAcademicYear = '${now.year}-${now.year + 1}';
+      _selectedTerm = 'odd';
+    } else {
+      _selectedAcademicYear = '${now.year - 1}-${now.year}';
+      _selectedTerm = 'even';
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadDocs());
   }
 
-  Future<void> _loadDocs() async {
-    final auth = context.read<AuthProvider>();
-    setState(() => _loading = true);
-    final docs =
-        await SupabaseService.getStudentDocuments(auth.currentUser!.id);
-    if (mounted) setState(() { _docs = docs; _loading = false; });
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // UPLOAD DIALOG
-  // ══════════════════════════════════════════════════════════
-  Future<void> _showUploadDialog() async {
-    String selectedType = 'timetable';
-    final titleCtrl = TextEditingController();
-
-    await showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setS) => Container(
-          padding: EdgeInsets.only(
-              bottom: MediaQuery.of(ctx).viewInsets.bottom),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28))),
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Container(width: 44, height: 4,
-                  decoration: BoxDecoration(color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2))),
-              const SizedBox(height: 18),
-              Text('Upload Document', style: GoogleFonts.playfairDisplay(
-                  fontSize: 20, fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827))),
-              const SizedBox(height: 4),
-              Text('AI will read & index it for smart answers',
-                  style: GoogleFonts.lato(fontSize: 13,
-                      color: const Color(0xFF6B7280))),
-              const SizedBox(height: 18),
-
-              // Type selector
-              Align(alignment: Alignment.centerLeft,
-                child: Text('Document Type', style: GoogleFonts.lato(
-                    fontSize: 13, fontWeight: FontWeight.w600,
-                    color: const Color(0xFF6B7280)))),
-              const SizedBox(height: 10),
-              SizedBox(height: 94,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: _docTypes.length,
-                  separatorBuilder: (_, __) => const SizedBox(width: 8),
-                  itemBuilder: (_, i) {
-                    final t   = _docTypes[i];
-                    final sel = selectedType == t['value'];
-                    return GestureDetector(
-                      onTap: () =>
-                          setS(() => selectedType = t['value'] as String),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 180),
-                        width: 82,
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        decoration: BoxDecoration(
-                          color: sel
-                              ? (t['color'] as Color).withOpacity(0.12)
-                              : const Color(0xFFF9FAFB),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                              color: sel
-                                  ? t['color'] as Color
-                                  : const Color(0xFFE5E7EB),
-                              width: sel ? 2 : 1)),
-                        child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(t['emoji'] as String,
-                                  style: const TextStyle(fontSize: 22)),
-                              const SizedBox(height: 5),
-                              Text(t['label'] as String,
-                                  style: GoogleFonts.lato(
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.w600,
-                                      color: sel
-                                          ? t['color'] as Color
-                                          : const Color(0xFF6B7280)),
-                                  textAlign: TextAlign.center,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis),
-                            ]),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 16),
-
-              // Title field
-              Align(alignment: Alignment.centerLeft,
-                child: Text('Title (Optional)', style: GoogleFonts.lato(
-                    fontSize: 13, fontWeight: FontWeight.w600,
-                    color: const Color(0xFF6B7280)))),
-              const SizedBox(height: 8),
-              TextField(
-                controller: titleCtrl,
-                textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(
-                  hintText: 'e.g. Semester 5 Timetable',
-                  hintStyle: GoogleFonts.lato(
-                      color: const Color(0xFF9CA3AF), fontSize: 14),
-                  filled: true, fillColor: const Color(0xFFF9FAFB),
-                  border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide:
-                          const BorderSide(color: Color(0xFFE5E7EB))),
-                  enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide:
-                          const BorderSide(color: Color(0xFFE5E7EB))),
-                  focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                          color: AppTheme.primary, width: 2)),
-                  contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 14, vertical: 12),
-                ),
-              ),
-              const SizedBox(height: 20),
-
-              // Source buttons
-              Align(alignment: Alignment.centerLeft,
-                child: Text('Choose Source', style: GoogleFonts.lato(
-                    fontSize: 13, fontWeight: FontWeight.w600,
-                    color: const Color(0xFF6B7280)))),
-              const SizedBox(height: 12),
-              Row(children: [
-                Expanded(child: _srcBtn(
-                  Icons.camera_alt_rounded, 'Camera',
-                  const Color(0xFF3B82F6),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _pickImage(type: selectedType,
-                        title: titleCtrl.text.trim(),
-                        source: ImageSource.camera);
-                  },
-                )),
-                const SizedBox(width: 10),
-                Expanded(child: _srcBtn(
-                  Icons.photo_library_rounded, 'Gallery',
-                  const Color(0xFF8B5CF6),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _pickImage(type: selectedType,
-                        title: titleCtrl.text.trim(),
-                        source: ImageSource.gallery);
-                  },
-                )),
-                const SizedBox(width: 10),
-                Expanded(child: _srcBtn(
-                  Icons.upload_file_rounded, 'File',
-                  const Color(0xFF10B981),
-                  onTap: () async {
-                    Navigator.pop(ctx);
-                    await _pickFile(type: selectedType,
-                        title: titleCtrl.text.trim());
-                  },
-                )),
-              ]),
-            ]),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _srcBtn(IconData icon, String label, Color color,
-      {required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 14),
-        decoration: BoxDecoration(
-            color: color.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: color.withOpacity(0.3))),
-        child: Column(children: [
-          Icon(icon, color: color, size: 26),
-          const SizedBox(height: 6),
-          Text(label, style: GoogleFonts.lato(
-              fontSize: 12, fontWeight: FontWeight.w600, color: color)),
-        ]),
-      ),
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // PICK IMAGE
-  // ══════════════════════════════════════════════════════════
-  Future<void> _pickImage({
-    required String type,
-    required String title,
-    required ImageSource source,
-  }) async {
+  Future<void> _openDocumentRaw(StudentDocument doc) async {
     try {
-      final picked = await ImagePicker().pickImage(
-          source: source, maxWidth: 1920, maxHeight: 1920, imageQuality: 85);
-      if (picked == null) return;
-      final bytes    = await picked.readAsBytes();
-      final ext      = picked.name.split('.').last.toLowerCase();
-      final mimeType = ext == 'png' ? 'image/png' : 'image/jpeg';
-      await _processAndUpload(
-        type: type, title: title, fileName: picked.name,
-        mimeType: mimeType, fileSize: bytes.length,
-        base64: base64Encode(bytes),
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator()),
       );
-    } catch (e) {
-      _showSnack('Image pick failed: $e', isError: true);
-    }
-  }
+      final bytes = await SupabaseService.getDocumentBytes(doc);
+      if (mounted) Navigator.pop(context);
 
-  // ══════════════════════════════════════════════════════════
-  // PICK FILE
-  // ══════════════════════════════════════════════════════════
-  Future<void> _pickFile({
-    required String type, required String title,
-  }) async {
-    try {
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) return;
-      final file     = result.files.first;
-      if (file.bytes == null) return;
-      final ext      = (file.extension ?? 'jpg').toLowerCase();
-      final mimeType = ext == 'pdf'
-          ? 'application/pdf'
-          : ext == 'png' ? 'image/png' : 'image/jpeg';
-      await _processAndUpload(
-        type: type, title: title, fileName: file.name,
-        mimeType: mimeType, fileSize: file.size,
-        base64: base64Encode(file.bytes!),
-      );
-    } catch (e) {
-      _showSnack('File pick failed: $e', isError: true);
-    }
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // MAIN PIPELINE: UPLOAD → OCR → CHUNK → EMBED
-  // ══════════════════════════════════════════════════════════
-  Future<void> _processAndUpload({
-    required String type,   required String title,
-    required String fileName, required String mimeType,
-    required int fileSize,  required String base64,
-  }) async {
-    final auth      = context.read<AuthProvider>();
-    final docTitle  = title.isEmpty ? _defaultTitle(type) : title;
-
-    setState(() { _uploading = true; _uploadStep = 1;
-        _uploadStatus = 'Saving document...'; });
-
-    try {
-      // ── Step 1: Save to Supabase ───────────────────────────
-      final doc = await SupabaseService.uploadDocument(
-        studentId: auth.currentUser!.id,
-        docType:   type, title: docTitle,
-        fileName:  fileName, mimeType: mimeType,
-        fileSize:  fileSize, contentBase64: base64,
-      );
-      debugPrint('✅ Document saved: ${doc.id}');
-
-      // ── Step 2: Gemini Vision OCR ──────────────────────────
-      setState(() { _uploadStep = 2;
-          _uploadStatus = '🤖 AI reading document (OCR)...'; });
-
-      String extractedText = '';
-      try {
-        extractedText = await AIService.analyzeDocumentImage(
-          base64Data: base64, mimeType: mimeType, docType: type,
+      if (bytes != null && bytes.isNotEmpty) {
+        openRawBytes(
+          bytes: bytes,
+          fileName: doc.fileName,
+          mimeType: doc.mimeType,
         );
-        debugPrint('✅ OCR: ${extractedText.length} chars extracted');
-
-        if (extractedText.isNotEmpty) {
-          await SupabaseService.updateDocumentExtractedText(
-              doc.id, extractedText);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Opening authentic document "${doc.fileName}"...'),
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
         }
-      } catch (e) {
-        debugPrint('⚠️ OCR failed: $e — proceeding without text');
-      }
-
-      // ── Step 3 & 4: Batch Chunk + Embed (RAG) ─────────────────
-      if (extractedText.isNotEmpty) {
-        // Mandatory Cool-down to let the RPM quota breathe
-        setState(() { _uploadStatus = '⏳ Cooling down AI quota (10s)...'; });
-        await Future.delayed(const Duration(seconds: 10));
-
-        setState(() { 
-          _uploadStep = 3;
-          _uploadStatus = '✂️ Analyzing content structure...'; 
-        });
-
-        final chunks = _splitIntoChunks(extractedText, size: 800);
-        debugPrint('✅ RAG: Created ${chunks.length} chunks from ${extractedText.length} chars');
-
-        setState(() { 
-          _uploadStep = 4;
-          _uploadStatus = '⚡ Mapping ${chunks.length} segments to AI search index...'; 
-        });
-
-        try {
-          final embeddings = await AIService.createBatchEmbeddings(chunks);
-          
-          if (embeddings.isNotEmpty) {
-             setState(() { _uploadStatus = '💾 Saving AI search index...'; });
-             await SupabaseService.saveDocumentChunks(
-              documentId: doc.id,
-              studentId:  auth.currentUser!.id,
-              chunks:     chunks.sublist(0, embeddings.length),
-              embeddings: embeddings,
-            );
-            debugPrint('✅ RAG: ${embeddings.length} chunks indexed successfully');
-          } else {
-             debugPrint('⚠️ RAG: No embeddings generated');
-          }
-        } catch (e) {
-          debugPrint('⚠️ Indexing Error: $e');
-          _showSnack('AI search index partially failed. You can retry via the 🔄 icon.', isError: true, duration: 6);
-        }
-      }
-
-      // ── Done ───────────────────────────────────────────────
-      await _loadDocs();
-      setState(() { _uploading = false; _uploadStep = 0; _uploadStatus = ''; });
-
-      if (extractedText.isNotEmpty) {
-        _showSnack('✅ Document uploaded & indexed! Ask AI anything about it.', isError: false, duration: 4);
+      } else if (doc.contentBase64 != null && doc.contentBase64!.isNotEmpty) {
+        openRawDocument(
+          base64Content: doc.contentBase64!,
+          fileName: doc.fileName,
+          mimeType: doc.mimeType,
+        );
       } else {
-        _showSnack('⚠️ Document saved, but AI was too busy to read it. Please click the 🔄 retry icon later.', isError: true, duration: 6);
+        if (mounted) {
+          DocumentViewerDialog.show(context, doc);
+        }
       }
-
     } catch (e) {
-      setState(() { _uploading = false; _uploadStep = 0; _uploadStatus = ''; });
-      
-      // Error Shield: Convert technical Gemini errors into student-friendly messages
-      String friendlyMsg = 'Upload failed: $e';
-      if (e.toString().contains('OCR_FAILED') || e.toString().contains('429')) {
-        friendlyMsg = '⚠️ The AI document reader is currently busy. Your document is saved, but you may need to click the 🔄 retry icon in a few minutes.';
-      } else if (e.toString().contains('404')) {
-        friendlyMsg = '⚠️ AI Configuration error. Our team has been notified. Please try again later.';
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Could not open document: $e')),
+        );
       }
-      
-      _showSnack(friendlyMsg, isError: true, duration: 6);
     }
   }
 
-  // ── Chunk text into large pieces for 30+ page support ──
-  List<String> _splitIntoChunks(String text, {int size = 800}) {
-    if (text.trim().isEmpty) return [];
-    
-    // Normalize whitespace
-    final cleanText = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    final words     = cleanText.split(' ');
-    final chunks    = <String>[];
-    const overlap   = 30;
+  Widget _buildTermFilterBar() {
+    final isOdd = _selectedTerm == 'odd';
+    final now = DateTime.now();
+    final currentYear = now.month >= 6 ? '${now.year}-${now.year + 1}' : '${now.year - 1}-${now.year}';
+    final currentTerm = now.month >= 6 ? 'odd' : 'even';
+    final isCurrentSession = _selectedAcademicYear == currentYear && _selectedTerm == currentTerm;
 
-    if (words.length <= size) {
-      return [cleanText];
-    }
-
-    for (int i = 0; i < words.length; i += size - overlap) {
-      final end   = (i + size).clamp(0, words.length);
-      final chunk = words.sublist(i, end).join(' ').trim();
-      
-      // Only add if it has meaningful content
-      if (chunk.length > 5) {
-        chunks.add(chunk);
-      }
-      
-      if (end >= words.length) break;
-    }
-
-    return chunks.isEmpty ? [cleanText] : chunks;
-  }
-
-  String _defaultTitle(String type) =>
-      _docTypes.firstWhere((t) => t['value'] == type,
-          orElse: () => {'label': 'Document'})['label'] as String;
-
-  Future<void> _deleteDoc(StudentDocument doc) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text('Delete Document', style: GoogleFonts.playfairDisplay(
-            fontSize: 18, fontWeight: FontWeight.w700)),
-        content: Text(
-            'Delete "${doc.title}"?\nThis will also remove its AI search index.',
-            style: GoogleFonts.lato(fontSize: 14)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false),
-              child: const Text('Cancel')),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.filter_list_rounded, size: 18, color: AppTheme.primary),
+              const SizedBox(width: 8),
+              Text(
+                'Academic Session & Term',
+                style: GoogleFonts.lato(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF111827),
+                ),
+              ),
+              if (isCurrentSession) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECFDF5),
+                    borderRadius: BorderRadius.circular(6),
+                    border: Border.all(color: const Color(0xFFA7F3D0)),
+                  ),
+                  child: Text(
+                    'Active Term',
+                    style: GoogleFonts.lato(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF047857),
+                    ),
+                  ),
+                ),
+              ],
+              const Spacer(),
+              // Year Selector Dropdown
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE5E7EB)),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<String>(
+                    value: _selectedAcademicYear,
+                    isDense: true,
+                    style: GoogleFonts.lato(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF1F2937),
+                    ),
+                    items: _academicYears.map((yr) {
+                      return DropdownMenuItem<String>(
+                        value: yr,
+                        child: Text(yr),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) setState(() => _selectedAcademicYear = val);
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Term Switcher (Odd vs Even)
+          Row(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedTerm = 'odd'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      color: isOdd ? AppTheme.primary : const Color(0xFFF9FAFB),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: isOdd ? AppTheme.primary : const Color(0xFFE5E7EB),
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Odd Semester (Jun - Dec)',
+                        style: GoogleFonts.lato(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: isOdd ? Colors.white : const Color(0xFF4B5563),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => _selectedTerm = 'even'),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      color: !isOdd ? AppTheme.primary : const Color(0xFFF9FAFB),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: !isOdd ? AppTheme.primary : const Color(0xFFE5E7EB),
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        'Even Semester (Jan - May)',
+                        style: GoogleFonts.lato(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: !isOdd ? Colors.white : const Color(0xFF4B5563),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
     );
-    if (confirm == true) {
-      await SupabaseService.deleteDocument(doc.id);
-      await _loadDocs();
-      _showSnack('Document deleted', isError: false);
-    }
   }
 
-  // ── Manual Retry Indexing ─────────────────────────────────
-  Future<void> _retryIndexing(StudentDocument partialDoc) async {
-    setState(() { _uploading = true; _uploadStep = 1; 
-        _uploadStatus = 'Fetching document content...'; });
-    
-    try {
-      // 1. Fetch full doc (with Base64)
-      final doc = await SupabaseService.getDocumentWithContent(partialDoc.id);
-      if (doc == null || doc.contentBase64 == null) {
-        throw Exception('Document content missing.');
-      }
-
-      // 2. OCR (if needed)
-      String extracted = doc.extractedText ?? '';
-      if (extracted.isEmpty) {
-        setState(() { _uploadStep = 2; _uploadStatus = '🤖 Retrying AI OCR...'; });
-        extracted = await AIService.analyzeDocumentImage(
-          base64Data: doc.contentBase64!,
-          mimeType:   doc.mimeType,
-          docType:    doc.docType,
-        );
-        if (extracted.isNotEmpty) {
-          await SupabaseService.updateDocumentExtractedText(doc.id, extracted);
-        }
-      }
-
-      // 3. Batch Index
-      if (extracted.isNotEmpty) {
-        // Cool-down
-        setState(() { _uploadStatus = '⏳ Waiting for AI (Cooling)...'; });
-        await Future.delayed(const Duration(seconds: 5));
-
-        setState(() { _uploadStep = 3; 
-            _uploadStatus = '⚡ Re-indexing chunks (Batch API)...'; });
-        final chunks = _splitIntoChunks(extracted);
-        final embeddings = await AIService.createBatchEmbeddings(chunks);
-        
-        if (embeddings.isNotEmpty) {
-          await SupabaseService.saveDocumentChunks(
-            documentId: doc.id, studentId: doc.studentId,
-            chunks: chunks.sublist(0, embeddings.length),
-            embeddings: embeddings,
-          );
-        }
-      }
-
-      await _loadDocs();
-      _showSnack('✅ Document re-indexed successfully!', isError: false);
-    } catch (e) {
-      _showSnack('Retry failed: $e', isError: true);
-    } finally {
-      setState(() { _uploading = false; _uploadStep = 0; _uploadStatus = ''; });
-    }
+  Future<void> _loadDocs() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.currentUser == null) return;
+    setState(() => _loading = true);
+    final docs = await SupabaseService.getStudentAccessibleDocuments(
+      studentId: auth.currentUser!.id,
+      rollNo: auth.currentUser!.rollNumber,
+      program: auth.currentUser!.program,
+      branch: auth.currentUser!.branch,
+    );
+    if (mounted) setState(() { _docs = docs; _loading = false; });
   }
 
-  void _showSnack(String msg,
-      {required bool isError, int duration = 3}) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-      content: Text(msg, style: GoogleFonts.lato(color: Colors.white)),
-      backgroundColor: isError ? Colors.red : const Color(0xFF10B981),
-      duration: Duration(seconds: duration),
-      behavior: SnackBarBehavior.floating,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-    ));
-  }
-
-  // ══════════════════════════════════════════════════════════
-  // BUILD
-  // ══════════════════════════════════════════════════════════
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF0F4FF),
       appBar: AppBar(
         backgroundColor: AppTheme.primary,
+        elevation: 0,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('My Documents', style: GoogleFonts.playfairDisplay(
+          Text('Academic Documents', style: GoogleFonts.playfairDisplay(
               fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
-          Text('Upload → AI reads & answers from them',
+          Text('Mentor-published schedules, syllabus & records',
               style: GoogleFonts.lato(fontSize: 11, color: Colors.white70)),
         ]),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+            onPressed: _loadDocs,
+          ),
+        ],
       ),
-      body: _uploading
-          ? _uploadingView()
-          : _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _docs.isEmpty
-                  ? _emptyState()
-                  : _docsList(),
-      floatingActionButton: _uploading
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: _showUploadDialog,
-              backgroundColor: AppTheme.primary,
-              icon: const Icon(Icons.upload_rounded, color: Colors.white),
-              label: Text('Upload', style: GoogleFonts.lato(
-                  color: Colors.white, fontWeight: FontWeight.w600)),
-            ),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.primary)))
+          : _docsList(),
     );
   }
 
-  // ── Upload progress view ──────────────────────────────────
-  Widget _uploadingView() {
-    final steps = [
-      '1. Save document',
-      '2. AI reads document (OCR)',
-      '3. Split into chunks',
-      '4. Create search index',
-    ];
-    return Center(
-      child: Padding(padding: const EdgeInsets.all(40),
-        child: Column(mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(AppTheme.primary)),
-            const SizedBox(height: 28),
-            Text(_uploadStatus, textAlign: TextAlign.center,
-                style: GoogleFonts.lato(fontSize: 16,
-                    fontWeight: FontWeight.w700, color: AppTheme.primary)),
-            const SizedBox(height: 20),
-            ...List.generate(steps.length, (i) {
-              final done    = i < _uploadStep - 1;
-              final current = i == _uploadStep - 1;
-              return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(children: [
-                  Icon(
-                    done ? Icons.check_circle_rounded
-                        : current ? Icons.radio_button_checked_rounded
-                            : Icons.radio_button_unchecked_rounded,
-                    size: 18,
-                    color: done ? const Color(0xFF10B981)
-                        : current ? AppTheme.primary
-                            : const Color(0xFFD1D5DB),
+  Widget _docsList() {
+    final auth = context.watch<AuthProvider>();
+    // Filter documents matching the selected academic year and term
+    final sessionDocs = _docs.where((doc) {
+      final matchesYear = (doc.academicYear ?? '2026-2027') == _selectedAcademicYear;
+      final matchesTerm = doc.term == _selectedTerm;
+      return matchesYear && matchesTerm;
+    }).toList();
+
+    // Deduplicate by category: keep only the latest active document per category & scope (excluding timetable which has its own card)
+    final Map<String, StudentDocument> categoryMap = {};
+    for (final doc in sessionDocs) {
+      if (doc.docType == 'timetable') continue;
+      final key = '${doc.docType}_${doc.targetScope}_${doc.targetRollNo ?? ""}';
+      if (!categoryMap.containsKey(key)) {
+        categoryMap[key] = doc;
+      }
+    }
+    final displayDocs = categoryMap.values.toList();
+
+    return RefreshIndicator(
+      onRefresh: _loadDocs,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        children: [
+          Container(
+            padding: const EdgeInsets.all(14),
+            margin: const EdgeInsets.only(bottom: 14),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEFF6FF),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: const Color(0xFFBFDBFE))),
+            child: Row(children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFDBEAFE),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.verified_user_rounded, color: Color(0xFF2563EB), size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Institutional Repository',
+                      style: GoogleFonts.lato(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFF1E40AF))),
+                  const SizedBox(height: 2),
+                  Text(
+                    'These materials are officially uploaded and verified by your faculty mentor. Tap any document to open the authentic raw PDF.',
+                    style: GoogleFonts.lato(fontSize: 11, color: const Color(0xFF3B82F6), height: 1.4)),
+                ],
+              )),
+            ]),
+          ),
+          _buildTermFilterBar(),
+          _buildTimetableSectionCard(auth, sessionDocs),
+          if (displayDocs.isEmpty)
+            Container(
+              padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: const Color(0xFFE5E7EB)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.folder_open_rounded, size: 48, color: Color(0xFF9CA3AF)),
+                  const SizedBox(height: 12),
+                  Text(
+                    'No Other Documents for $_selectedAcademicYear (${_selectedTerm.toUpperCase()})',
+                    style: GoogleFonts.lato(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: const Color(0xFF374151),
+                    ),
                   ),
-                  const SizedBox(width: 10),
-                  Text(steps[i], style: GoogleFonts.lato(
-                      fontSize: 13,
-                      fontWeight: current ? FontWeight.w700 : FontWeight.normal,
-                      color: done || current
-                          ? const Color(0xFF111827)
-                          : const Color(0xFF9CA3AF))),
-                ]),
-              );
-            }),
-            const SizedBox(height: 16),
-            Text(
-              '⏳ Please wait — AI is processing.\nDo not close this screen.',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.lato(fontSize: 12,
-                  color: const Color(0xFF6B7280), height: 1.5)),
-          ]),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Your mentor has not published additional verified materials (such as syllabus or marksheets) for this session yet.',
+                    textAlign: TextAlign.center,
+                    style: GoogleFonts.lato(fontSize: 12, color: const Color(0xFF6B7280)),
+                  ),
+                ],
+              ),
+            )
+          else ...[
+            ..._buildGroupedList(displayDocs),
+          ],
+        ],
       ),
     );
   }
 
-  Widget _emptyState() => Center(
-    child: SingleChildScrollView(
-      padding: const EdgeInsets.all(40),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        Container(width: 100, height: 100,
-          decoration: BoxDecoration(
-              color: AppTheme.primary.withOpacity(0.08),
-              shape: BoxShape.circle),
-          child: const Icon(Icons.cloud_upload_outlined,
-              size: 48, color: AppTheme.primary)),
-        const SizedBox(height: 24),
-        Text('No Documents Yet', style: GoogleFonts.playfairDisplay(
-            fontSize: 22, fontWeight: FontWeight.w700,
-            color: const Color(0xFF111827))),
-        const SizedBox(height: 12),
-        Text(
-          'Upload your documents and AI will answer:\n\n'
-          '📅 "What time is Monday Math class?"\n'
-          '📊 "How much did I score in Physics?"\n'
-          '🗓️ "When is my Chemistry exam?"\n'
-          '📚 "What topics are in Unit 3?"\n'
-          '✅ "How many classes can I miss?"',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.lato(fontSize: 14,
-              color: const Color(0xFF6B7280), height: 1.7)),
-        const SizedBox(height: 80),
-      ]),
-    ),
-  );
+  Widget _buildTimetableSectionCard(AuthProvider auth, List<StudentDocument> sessionDocs) {
+    final studentSection = MRUTimetableRepository.resolveSection(
+      program: auth.currentUser?.program,
+      branch: auth.currentUser?.branch,
+      semester: auth.currentUser?.semester,
+      section: auth.currentUser?.section,
+    );
+    final mentorName = auth.currentUser?.mentorEmail?.split('@').first ?? 'PRINIMA GUPTA';
+    final resolvedTeacher = MRUTimetableRepository.resolveTeacher(mentorName);
 
-  Widget _docsList() => RefreshIndicator(
-    onRefresh: _loadDocs,
-    child: ListView(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 100),
-      children: [
-        // RAG active banner
-        Container(
-          padding: const EdgeInsets.all(12),
-          margin: const EdgeInsets.only(bottom: 14),
-          decoration: BoxDecoration(
-            color: const Color(0xFFEFF6FF),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: const Color(0xFFBFDBFE))),
-          child: Row(children: [
-            const Icon(Icons.auto_awesome, color: Color(0xFF3B82F6), size: 16),
-            const SizedBox(width: 8),
-            Expanded(child: Text(
-              'RAG Active — just chat normally. AI will search your '
-              'documents automatically and answer accurately.',
-              style: GoogleFonts.lato(fontSize: 12,
-                  color: const Color(0xFF1E40AF), height: 1.4))),
-          ]),
+    final timetableDoc = sessionDocs.firstWhere(
+      (d) => d.docType == 'timetable',
+      orElse: () => _docs.firstWhere(
+        (d) => d.docType == 'timetable',
+        orElse: () => StudentDocument(
+          id: 'official_timetable',
+          title: 'Class Timetable ($studentSection)',
+          fileName: 'OFFICIAL TIMETABLE $studentSection ODD 2026-27.pdf',
+          mimeType: 'application/pdf',
+          docType: 'timetable',
+          targetScope: 'class',
+          createdAt: DateTime.now(),
         ),
-        ..._buildGroupedList(),
-      ],
-    ),
-  );
+      ),
+    );
 
-  List<Widget> _buildGroupedList() {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 14),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.2),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0F172A).withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFDBEAFE)),
+                ),
+                child: const Icon(Icons.calendar_month_rounded, color: Color(0xFF2563EB), size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          'Class & Faculty Timetable',
+                          style: GoogleFonts.lato(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: const Color(0xFF0F172A),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(6),
+                            border: Border.all(color: const Color(0xFFBFDBFE)),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              const Icon(Icons.lock_outline_rounded, size: 11, color: Color(0xFF2563EB)),
+                              const SizedBox(width: 3),
+                              Text(
+                                studentSection,
+                                style: GoogleFonts.lato(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
+                                  color: const Color(0xFF1D4ED8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Manav Rachna University | Odd Term 2026-2027',
+                      style: GoogleFonts.lato(
+                        fontSize: 11.5,
+                        color: const Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              // Live Sync Badge
+              GestureDetector(
+                onTap: () {
+                  TimetableSyncDialog.show(
+                    context,
+                    targetSection: studentSection,
+                    userRole: 'student',
+                    onSynced: () {
+                      if (mounted) setState(() {});
+                    },
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF0FDF4),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: const Color(0xFFBBF7D0)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.sync_rounded, size: 13, color: Color(0xFF16A34A)),
+                      const SizedBox(width: 5),
+                      Text(
+                        'Sync MRU',
+                        style: GoogleFonts.lato(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: const Color(0xFF15803D),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Official lecture hours, 100-min lab allocations, faculty details, and classroom assignments verified from mru.edupage.org • Last Synced: ${MRUTimetableRepository.getSectionLastSyncedFormatted(studentSection)}',
+            style: GoogleFonts.lato(
+              fontSize: 12,
+              color: const Color(0xFF64748B),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Two Distinct Clickable Buttons (Student vs Teacher Timetable)
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0F172A),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  onPressed: () => TimetableViewerDialog.show(
+                    context,
+                    className: studentSection,
+                    teacherName: resolvedTeacher,
+                    initialMode: 'student',
+                    document: timetableDoc,
+                    userRole: 'student',
+                  ),
+                  icon: const Icon(Icons.school_rounded, size: 16),
+                  label: Text(
+                    'Student Timetable ($studentSection)',
+                    style: GoogleFonts.lato(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF0284C7),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    elevation: 0,
+                  ),
+                  onPressed: () => TeacherSelectorDialog.showAndOpenViewer(
+                    context,
+                    className: studentSection,
+                    currentTeacher: resolvedTeacher,
+                    document: timetableDoc,
+                    userRole: 'student',
+                  ),
+                  icon: const Icon(Icons.person_search_rounded, size: 16),
+                  label: Text(
+                    'Teacher Timetable 🔍',
+                    style: GoogleFonts.lato(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildGroupedList(List<StudentDocument> docs) {
     final grouped = <String, List<StudentDocument>>{};
-    for (final d in _docs) {
+    for (final d in docs) {
       grouped.putIfAbsent(d.docType, () => []).add(d);
     }
 
@@ -688,7 +615,7 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
           (t) => t['value'] == entry.key,
           orElse: () => _docTypes.last);
       widgets.add(Padding(
-        padding: const EdgeInsets.only(top: 4, bottom: 8),
+        padding: const EdgeInsets.only(top: 8, bottom: 8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
@@ -709,73 +636,150 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
   }
 
   Widget _docCard(StudentDocument doc, Map<String, dynamic> ti) {
-    final color   = ti['color'] as Color;
+    final color = ti['color'] as Color;
     final indexed = doc.extractedText?.isNotEmpty == true;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: Colors.white, borderRadius: BorderRadius.circular(16),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05),
-            blurRadius: 8, offset: const Offset(0, 3))]),
-      child: Padding(padding: const EdgeInsets.all(14),
-        child: Row(children: [
-          Container(width: 50, height: 50,
-            decoration: BoxDecoration(color: color.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12)),
-            child: Center(child: Text(ti['emoji'] as String,
-                style: const TextStyle(fontSize: 22)))),
-          const SizedBox(width: 12),
-          Expanded(child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(doc.title, style: GoogleFonts.lato(fontSize: 14,
-                  fontWeight: FontWeight.w700, color: const Color(0xFF111827))),
-              Text(doc.fileName, style: GoogleFonts.lato(
-                  fontSize: 12, color: const Color(0xFF6B7280)),
-                  overflow: TextOverflow.ellipsis),
-              const SizedBox(height: 5),
-              Row(children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: indexed
-                        ? const Color(0xFFF0FDF4)
-                        : const Color(0xFFFFF7ED),
-                    borderRadius: BorderRadius.circular(8)),
-                  child: Text(
-                    indexed ? '✅ AI Indexed' : '⚠️ Not indexed',
-                    style: GoogleFonts.lato(fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: indexed
-                            ? const Color(0xFF16A34A)
-                            : const Color(0xFFD97706)))),
-                const SizedBox(width: 8),
-                Text(DateFormat('MMM d').format(doc.createdAt.toLocal()),
-                    style: GoogleFonts.lato(fontSize: 11,
-                        color: const Color(0xFF9CA3AF))),
-              ]),
-            ])),
-          GestureDetector(
-            onTap: () => _deleteDoc(doc),
-            child: Container(width: 34, height: 34,
-              decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(10)),
-              child: const Icon(Icons.delete_outline_rounded,
-                  color: Color(0xFFEF4444), size: 18))),
-          if (!indexed) ...[
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: () => _retryIndexing(doc),
-              child: Container(width: 34, height: 34,
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 8,
+              offset: const Offset(0, 3)),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(16),
+          onTap: () {
+            if (doc.docType == 'timetable') {
+              final auth = context.read<AuthProvider>();
+              TimetableViewerDialog.show(
+                context,
+                className: auth.currentUser?.section ?? 'CSE 5A',
+                document: doc,
+              );
+            } else {
+              _openDocumentRaw(doc);
+            }
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Row(children: [
+              Container(
+                width: 50, height: 50,
                 decoration: BoxDecoration(
-                    color: const Color(0xFFEFF6FF),
-                    borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.refresh_rounded,
-                    color: Color(0xFF3B82F6), size: 18))),
-          ],
-        ]),
+                    color: color.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12)),
+                child: Center(child: Text(ti['emoji'] as String,
+                    style: const TextStyle(fontSize: 22))),
+              ),
+              const SizedBox(width: 12),
+              Expanded(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(children: [
+                    Expanded(
+                      child: Text(doc.title,
+                          style: GoogleFonts.lato(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: const Color(0xFF111827))),
+                    ),
+                    if (doc.targetScope == 'class')
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF3F4F6),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('Class',
+                            style: GoogleFonts.lato(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: const Color(0xFF4B5563))),
+                      )
+                    else if (doc.targetRollNo != null)
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF3C7),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text('Personal',
+                            style: GoogleFonts.lato(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFFB45309))),
+                      ),
+                  ]),
+                  const SizedBox(height: 2),
+                  Text(doc.fileName,
+                      style: GoogleFonts.lato(
+                          fontSize: 12, color: const Color(0xFF6B7280)),
+                      overflow: TextOverflow.ellipsis),
+                  const SizedBox(height: 6),
+                  Row(children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: indexed
+                            ? const Color(0xFFF0FDF4)
+                            : const Color(0xFFFFF7ED),
+                        borderRadius: BorderRadius.circular(8)),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        Icon(
+                          indexed ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                          size: 11,
+                          color: indexed ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          indexed ? 'AI Active' : 'Indexed',
+                          style: GoogleFonts.lato(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                              color: indexed
+                                  ? const Color(0xFF16A34A)
+                                  : const Color(0xFFD97706))),
+                      ]),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(DateFormat('MMM d, yyyy').format(doc.createdAt.toLocal()),
+                        style: GoogleFonts.lato(fontSize: 11,
+                            color: const Color(0xFF9CA3AF))),
+                  ]),
+                ],
+              )),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.description_outlined, size: 20, color: Color(0xFF6B7280)),
+                    tooltip: 'View Document Details',
+                    onPressed: () {
+                      if (doc.docType == 'timetable') {
+                        final auth = context.read<AuthProvider>();
+                        TimetableViewerDialog.show(
+                          context,
+                          className: auth.currentUser?.section ?? 'CSE 5A',
+                          document: doc,
+                        );
+                      } else {
+                        DocumentViewerDialog.show(context, doc);
+                      }
+                    },
+                  ),
+                  const Icon(Icons.open_in_new_rounded, color: AppTheme.primary, size: 20),
+                ],
+              ),
+            ]),
+          ),
+        ),
       ),
     );
   }

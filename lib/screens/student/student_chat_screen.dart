@@ -10,6 +10,8 @@ import '../../services/auth_provider.dart';
 import '../../services/chat_provider.dart';
 import '../../services/supabase_service.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/chat_interactive_options.dart';
+import '../../widgets/typing_dots_indicator.dart';
 
 class StudentChatScreen extends StatefulWidget {
   const StudentChatScreen({super.key});
@@ -24,9 +26,7 @@ class _StudentChatScreenState extends State<StudentChatScreen>
   final FocusNode _focus = FocusNode();
 
   List<StudentDocument> _availableDocs = [];
-  List<StudentDocument> _attachedDocs = [];
   bool _showSuggestions = true;
-  bool _showDocPanel = false;
 
   // Quick suggestion chips
   static const List<Map<String, dynamic>> _suggestions = [
@@ -57,8 +57,12 @@ class _StudentChatScreenState extends State<StudentChatScreen>
   Future<void> _loadDocs() async {
     final auth = context.read<AuthProvider>();
     if (auth.currentUser == null) return;
-    final docs =
-        await SupabaseService.getStudentDocuments(auth.currentUser!.id);
+    final docs = await SupabaseService.getStudentAccessibleDocuments(
+      studentId: auth.currentUser!.id,
+      rollNo: auth.currentUser!.rollNumber,
+      program: auth.currentUser!.program,
+      branch: auth.currentUser!.branch,
+    );
     if (mounted) setState(() => _availableDocs = docs);
   }
 
@@ -83,31 +87,16 @@ class _StudentChatScreenState extends State<StudentChatScreen>
     _ctrl.clear();
     setState(() {
       _showSuggestions = false;
-      _showDocPanel = false;
     });
     _focus.unfocus();
 
     final auth = context.read<AuthProvider>();
 
-    // Fetch full content for attached docs
-    List<StudentDocument> fullDocs = [];
-    for (final doc in _attachedDocs) {
-      final full = await SupabaseService.getDocumentWithContent(doc.id);
-      if (full != null) fullDocs.add(full);
-    }
-    setState(() => _attachedDocs = []);
-
     await context.read<ChatProvider>().sendStudentMessage(
           text,
           auth.currentUser!.id,
-          attachedDocs: fullDocs.isNotEmpty ? fullDocs : null,
         );
     _scrollToBottom();
-  }
-
-  void _toggleDocPanel() {
-    setState(() => _showDocPanel = !_showDocPanel);
-    if (_showDocPanel) _focus.unfocus();
   }
 
   @override
@@ -122,8 +111,6 @@ class _StudentChatScreenState extends State<StudentChatScreen>
       body: Column(children: [
         Expanded(child: _messageList(chat)),
         if (chat.isTyping) _typingBubble(),
-        if (_attachedDocs.isNotEmpty) _attachedBar(),
-        if (_showDocPanel) _docPanel(),
         if (_showSuggestions && chat.messages.length <= 1) _suggestionsBar(),
         _inputBar(chat),
       ]),
@@ -134,8 +121,6 @@ class _StudentChatScreenState extends State<StudentChatScreen>
   // APP BAR
   // ══════════════════════════════════════════════════════════
   PreferredSizeWidget _buildAppBar(ChatProvider chat) {
-    final conv = chat.currentConversation;
-
     return AppBar(
       backgroundColor: Colors.transparent,
       elevation: 0,
@@ -212,39 +197,28 @@ class _StudentChatScreenState extends State<StudentChatScreen>
         )),
       ]),
       actions: [
-        // Docs count badge
+        // Verified Docs count badge
         if (_availableDocs.isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: GestureDetector(
-              onTap: _toggleDocPanel,
+            padding: const EdgeInsets.only(right: 12),
+            child: Center(
               child: Container(
                 padding:
                     const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                 decoration: BoxDecoration(
-                  color: _showDocPanel
-                      ? AppTheme.accent
-                      : Colors.white.withOpacity(0.12),
+                  color: Colors.white.withOpacity(0.12),
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: _showDocPanel
-                          ? AppTheme.accent
-                          : Colors.white.withOpacity(0.25)),
+                  border: Border.all(color: Colors.white.withOpacity(0.25)),
                 ),
                 child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.folder_rounded,
-                      color: _showDocPanel
-                          ? const Color(0xFF1A1A1A)
-                          : Colors.white,
-                      size: 13),
+                  const Icon(Icons.verified_rounded,
+                      color: AppTheme.accent, size: 14),
                   const SizedBox(width: 4),
-                  Text('${_availableDocs.length}',
+                  Text('${_availableDocs.length} Verified',
                       style: GoogleFonts.lato(
-                          fontSize: 12,
+                          fontSize: 11,
                           fontWeight: FontWeight.w700,
-                          color: _showDocPanel
-                              ? const Color(0xFF1A1A1A)
-                              : Colors.white)),
+                          color: Colors.white)),
                 ]),
               ),
             ),
@@ -357,43 +331,61 @@ class _StudentChatScreenState extends State<StudentChatScreen>
                     ? Text(msg.content,
                         style: GoogleFonts.lato(
                             color: Colors.white, fontSize: 14, height: 1.5))
-                    : MarkdownBody(
-                        data: msg.content,
-                        styleSheet: MarkdownStyleSheet(
-                          p: GoogleFonts.lato(
-                              fontSize: 14,
-                              height: 1.45,
-                              color: isMentor
-                                  ? Colors.white
-                                  : const Color(0xFF111827)),
-                          strong: GoogleFonts.lato(
-                              fontWeight: FontWeight.w700,
-                              color:
-                                  isMentor ? Colors.white : AppTheme.primary),
-                          listBullet: GoogleFonts.lato(
-                              color: isMentor
-                                  ? Colors.white
-                                  : const Color(0xFF111827)),
-                          h2: GoogleFonts.playfairDisplay(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primary),
-                          h3: GoogleFonts.lato(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primary),
-                          code: GoogleFonts.sourceCodePro(
-                              fontSize: 13,
-                              backgroundColor: const Color(0xFFF3F4F6)),
-                          blockquoteDecoration: BoxDecoration(
-                            color: AppTheme.primary.withOpacity(0.05),
-                            borderRadius: BorderRadius.circular(4),
-                            border: const Border(
-                                left: BorderSide(
-                                    color: AppTheme.primary, width: 3)),
-                          ),
-                        ),
-                      ),
+                    : Builder(builder: (context) {
+                        final parsed = InteractiveOptionParser.parse(msg.content);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            MarkdownBody(
+                              data: parsed.cleanText,
+                              styleSheet: MarkdownStyleSheet(
+                                p: GoogleFonts.lato(
+                                    fontSize: 14,
+                                    height: 1.45,
+                                    color: isMentor
+                                        ? Colors.white
+                                        : const Color(0xFF111827)),
+                                strong: GoogleFonts.lato(
+                                    fontWeight: FontWeight.w700,
+                                    color:
+                                        isMentor ? Colors.white : AppTheme.primary),
+                                listBullet: GoogleFonts.lato(
+                                    color: isMentor
+                                        ? Colors.white
+                                        : const Color(0xFF111827)),
+                                h2: GoogleFonts.playfairDisplay(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.primary),
+                                h3: GoogleFonts.lato(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: AppTheme.primary),
+                                code: GoogleFonts.sourceCodePro(
+                                    fontSize: 13,
+                                    backgroundColor: const Color(0xFFF3F4F6)),
+                                blockquoteDecoration: BoxDecoration(
+                                  color: AppTheme.primary.withOpacity(0.05),
+                                  borderRadius: BorderRadius.circular(4),
+                                  border: const Border(
+                                      left: BorderSide(
+                                          color: AppTheme.primary, width: 3)),
+                                ),
+                              ),
+                            ),
+                            if (parsed.options.isNotEmpty) ...[
+                              const SizedBox(height: 6),
+                              ChatInteractiveOptionsView(
+                                options: parsed.options,
+                                primaryColor: isMentor
+                                    ? Colors.white
+                                    : AppTheme.primary,
+                                onOptionSelected: (selected) => _send(selected),
+                              ),
+                            ],
+                          ],
+                        );
+                      }),
               ),
             ),
           ),
@@ -460,236 +452,12 @@ class _StudentChatScreenState extends State<StudentChatScreen>
                     offset: const Offset(0, 2))
               ],
             ),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              _animatedDot(0),
-              const SizedBox(width: 5),
-              _animatedDot(150),
-              const SizedBox(width: 5),
-              _animatedDot(300),
-            ]),
-          ),
-        ]),
-      );
-
-  Widget _animatedDot(int delayMs) => TweenAnimationBuilder<double>(
-        tween: Tween(begin: 0.0, end: 1.0),
-        duration: const Duration(milliseconds: 700),
-        curve: Curves.easeInOut,
-        builder: (_, v, __) {
-          final opacity = (v * 2 * 3.14159).abs() < 3.14159 ? v : 1.0 - v;
-          return Container(
-            width: 9,
-            height: 9,
-            decoration: BoxDecoration(
-                color: AppTheme.primary.withOpacity(0.3 + opacity * 0.7),
-                shape: BoxShape.circle),
-          );
-        },
-      );
-
-  // ══════════════════════════════════════════════════════════
-  // ATTACHED DOCS BAR
-  // ══════════════════════════════════════════════════════════
-  Widget _attachedBar() => Container(
-        color: AppTheme.primary.withOpacity(0.04),
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-        child: Row(children: [
-          const Icon(Icons.attach_file_rounded,
-              color: AppTheme.primary, size: 14),
-          const SizedBox(width: 6),
-          Text('Attached:',
-              style: GoogleFonts.lato(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: AppTheme.primary)),
-          const SizedBox(width: 8),
-          Expanded(
-              child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-                children: _attachedDocs.map((doc) {
-              final ti = _getTypeInfo(doc.docType);
-              return Container(
-                margin: const EdgeInsets.only(right: 8),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: AppTheme.primary.withOpacity(0.25)),
-                ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  Text(ti['emoji'] as String,
-                      style: const TextStyle(fontSize: 12)),
-                  const SizedBox(width: 5),
-                  Text(doc.title,
-                      style: GoogleFonts.lato(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: AppTheme.primary),
-                      overflow: TextOverflow.ellipsis),
-                  const SizedBox(width: 6),
-                  GestureDetector(
-                      onTap: () => setState(() =>
-                          _attachedDocs.removeWhere((d) => d.id == doc.id)),
-                      child: const Icon(Icons.close_rounded,
-                          size: 13, color: AppTheme.primary)),
-                ]),
-              );
-            }).toList()),
-          )),
-        ]),
-      );
-
-  // ══════════════════════════════════════════════════════════
-  // DOCUMENT PANEL
-  // ══════════════════════════════════════════════════════════
-  Widget _docPanel() => Container(
-        constraints: const BoxConstraints(maxHeight: 260),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          boxShadow: [
-            BoxShadow(
-                color: Colors.black.withOpacity(0.08),
-                blurRadius: 16,
-                offset: const Offset(0, -4))
-          ],
-        ),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          // Header
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: Row(children: [
-              const Icon(Icons.folder_open_rounded,
-                  color: AppTheme.primary, size: 16),
-              const SizedBox(width: 8),
-              Text('Attach Documents',
-                  style: GoogleFonts.lato(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF111827))),
-              const Spacer(),
-              if (_attachedDocs.isNotEmpty)
-                TextButton(
-                  onPressed: () => setState(() => _showDocPanel = false),
-                  style: TextButton.styleFrom(
-                      padding: EdgeInsets.zero,
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                  child: Text('Done (${_attachedDocs.length})',
-                      style: GoogleFonts.lato(
-                          fontWeight: FontWeight.w700,
-                          color: AppTheme.primary)),
-                ),
-            ]),
-          ),
-
-          if (_availableDocs.isEmpty)
-            Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(children: [
-                const Icon(Icons.folder_off_outlined,
-                    color: Color(0xFF9CA3AF), size: 36),
-                const SizedBox(height: 8),
-                Text('No documents uploaded yet',
-                    style: GoogleFonts.lato(color: const Color(0xFF6B7280))),
-                const SizedBox(height: 4),
-                Text('Go to Documents tab to upload',
-                    style: GoogleFonts.lato(
-                        fontSize: 12, color: const Color(0xFF9CA3AF))),
-              ]),
-            )
-          else
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-                itemCount: _availableDocs.length,
-                itemBuilder: (_, i) {
-                  final doc = _availableDocs[i];
-                  final isSelected = _attachedDocs.any((d) => d.id == doc.id);
-                  final ti = _getTypeInfo(doc.docType);
-                  final color = ti['color'] as Color;
-
-                  return GestureDetector(
-                    onTap: () => setState(() {
-                      if (isSelected) {
-                        _attachedDocs.removeWhere((d) => d.id == doc.id);
-                      } else {
-                        _attachedDocs.add(doc);
-                      }
-                    }),
-                    child: Container(
-                      margin: const EdgeInsets.only(bottom: 8),
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                          color: isSelected
-                              ? AppTheme.primary.withOpacity(0.05)
-                              : const Color(0xFFF9FAFB),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                              color: isSelected
-                                  ? AppTheme.primary
-                                  : const Color(0xFFE5E7EB),
-                              width: isSelected ? 2 : 1)),
-                      child: Row(children: [
-                        Container(
-                            width: 38,
-                            height: 38,
-                            decoration: BoxDecoration(
-                                color: color.withOpacity(0.1),
-                                borderRadius: BorderRadius.circular(10)),
-                            child: Center(
-                                child: Text(ti['emoji'] as String,
-                                    style: const TextStyle(fontSize: 18)))),
-                        const SizedBox(width: 12),
-                        Expanded(
-                            child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(doc.title,
-                                style: GoogleFonts.lato(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: const Color(0xFF111827))),
-                            Row(children: [
-                              Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                      color:
-                                          doc.extractedText?.isNotEmpty == true
-                                              ? const Color(0xFFF0FDF4)
-                                              : const Color(0xFFFFF7ED),
-                                      borderRadius: BorderRadius.circular(6)),
-                                  child: Text(
-                                      doc.extractedText?.isNotEmpty == true
-                                          ? '✅ Indexed'
-                                          : '⚠️ No index',
-                                      style: GoogleFonts.lato(
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w600,
-                                          color:
-                                              doc.extractedText?.isNotEmpty ==
-                                                      true
-                                                  ? const Color(0xFF16A34A)
-                                                  : const Color(0xFFD97706)))),
-                            ]),
-                          ],
-                        )),
-                        Icon(
-                            isSelected
-                                ? Icons.check_circle_rounded
-                                : Icons.radio_button_unchecked_rounded,
-                            color: isSelected
-                                ? AppTheme.primary
-                                : const Color(0xFFD1D5DB),
-                            size: 22),
-                      ]),
-                    ),
-                  );
-                },
-              ),
+            child: const TypingDotsIndicator(
+              color: AppTheme.primary,
+              dotSize: 7.5,
+              spacing: 5.0,
             ),
+          ),
         ]),
       );
 
@@ -759,56 +527,10 @@ class _StudentChatScreenState extends State<StudentChatScreen>
               offset: const Offset(0, -4))
         ],
       ),
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       child: SafeArea(
         top: false,
         child: Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
-          // Attach button
-          GestureDetector(
-            onTap: _toggleDocPanel,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              width: 42,
-              height: 42,
-              decoration: BoxDecoration(
-                color: _showDocPanel || _attachedDocs.isNotEmpty
-                    ? AppTheme.primary
-                    : const Color(0xFFF3F5FB),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
-                    color: _showDocPanel || _attachedDocs.isNotEmpty
-                        ? AppTheme.primary
-                        : const Color(0xFFE5E7EB)),
-              ),
-              child: Stack(alignment: Alignment.center, children: [
-                Icon(Icons.attach_file_rounded,
-                    color: _showDocPanel || _attachedDocs.isNotEmpty
-                        ? Colors.white
-                        : const Color(0xFF9CA3AF),
-                    size: 19),
-                if (_attachedDocs.isNotEmpty)
-                  Positioned(
-                      top: 5,
-                      right: 5,
-                      child: Container(
-                          width: 13,
-                          height: 13,
-                          decoration: BoxDecoration(
-                              color: AppTheme.accent,
-                              shape: BoxShape.circle,
-                              border:
-                                  Border.all(color: Colors.white, width: 1.5)),
-                          child: Center(
-                              child: Text('${_attachedDocs.length}',
-                                  style: GoogleFonts.lato(
-                                      fontSize: 7,
-                                      color: const Color(0xFF1A1A1A),
-                                      fontWeight: FontWeight.w700))))),
-              ]),
-            ),
-          ),
-          const SizedBox(width: 8),
-
           // Text field
           Expanded(
             child: Container(
@@ -818,22 +540,35 @@ class _StudentChatScreenState extends State<StudentChatScreen>
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(color: const Color(0xFFE5E7EB)),
               ),
-              child: TextField(
-                controller: _ctrl,
-                focusNode: _focus,
-                maxLines: 6,
-                minLines: 1,
-                textCapitalization: TextCapitalization.sentences,
-                onSubmitted: isTyping ? null : (_) => _send(),
-                decoration: InputDecoration(
-                  hintText: _attachedDocs.isNotEmpty
-                      ? 'Ask about attached documents...'
-                      : 'Ask anything about your academics...',
-                  hintStyle: GoogleFonts.lato(
-                      color: const Color(0xFF9CA3AF), fontSize: 14),
-                  border: InputBorder.none,
-                  contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+              child: Focus(
+                onKeyEvent: (node, event) {
+                  if (event is KeyDownEvent &&
+                      event.logicalKey == LogicalKeyboardKey.enter &&
+                      !HardwareKeyboard.instance.isShiftPressed) {
+                    if (!isTyping) {
+                      _send();
+                    }
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: TextField(
+                  controller: _ctrl,
+                  focusNode: _focus,
+                  maxLines: 6,
+                  minLines: 1,
+                  textCapitalization: TextCapitalization.sentences,
+                  textInputAction: TextInputAction.send,
+                  onSubmitted: isTyping ? null : (_) => _send(),
+                  decoration: InputDecoration(
+                    hintText:
+                        'Ask anything about attendance, marks, schedule...',
+                    hintStyle: GoogleFonts.lato(
+                        color: const Color(0xFF9CA3AF), fontSize: 14),
+                    border: InputBorder.none,
+                    contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 11),
+                  ),
                 ),
               ),
             ),
@@ -874,24 +609,5 @@ class _StudentChatScreenState extends State<StudentChatScreen>
         ]),
       ),
     );
-  }
-
-  // ── Helpers ───────────────────────────────────────────────
-  Map<String, dynamic> _getTypeInfo(String type) {
-    const types = [
-      {'value': 'timetable', 'emoji': '📅', 'color': Color(0xFF3B82F6)},
-      {
-        'value': 'academic_calendar',
-        'emoji': '🗓️',
-        'color': Color(0xFF8B5CF6)
-      },
-      {'value': 'syllabus', 'emoji': '📚', 'color': Color(0xFF10B981)},
-      {'value': 'marksheet', 'emoji': '📊', 'color': Color(0xFFF59E0B)},
-      {'value': 'attendance', 'emoji': '✅', 'color': Color(0xFF06B6D4)},
-      {'value': 'assignment', 'emoji': '📝', 'color': Color(0xFFEF4444)},
-      {'value': 'other', 'emoji': '🏛️', 'color': Color(0xFF6B7280)},
-    ];
-    return types.firstWhere((t) => t['value'] == type,
-        orElse: () => types.last);
   }
 }

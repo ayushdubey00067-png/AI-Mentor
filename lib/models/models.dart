@@ -8,6 +8,7 @@ class UserModel {
   final String? program;
   final String? branch;
   final String? semester;
+  final String? section;
   final String? mentorEmail;
   final String? rollNumber;
   final String? phone;
@@ -31,6 +32,7 @@ class UserModel {
     this.program,
     this.branch,
     this.semester,
+    this.section,
     this.mentorEmail,
     this.rollNumber,
     this.phone,
@@ -51,14 +53,16 @@ class UserModel {
   bool get isStudent => role == 'student';
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
+    final role = map['role'] ?? 'student';
     return UserModel(
       id: map['id'] ?? '',
       email: map['email'] ?? '',
       name: map['name'] ?? '',
-      role: map['role'] ?? 'student',
+      role: role,
       program: map['program'],
       branch: map['branch'],
       semester: map['semester'],
+      section: map['section'] ?? (role == 'student' ? 'CSE 5A' : null),
       mentorEmail: map['mentor_email'],
       rollNumber: map['roll_number'],
       phone: map['phone'],
@@ -85,6 +89,7 @@ class UserModel {
       'program': program,
       'branch': branch,
       'semester': semester,
+      'section': section,
       'mentor_email': mentorEmail,
       'roll_number': rollNumber,
       'phone': phone,
@@ -241,7 +246,8 @@ class MessageModel {
 
 class StudentDocument {
   final String id;
-  final String studentId;
+  final String? studentId;
+  final String? uploadedBy;
   final String docType;
   final String title;
   final String fileName;
@@ -250,11 +256,22 @@ class StudentDocument {
   final String? contentBase64;
   final String? extractedText;
   final String? storagePath;
+  final String targetScope; // 'class' or 'individual'
+  final String? targetRollNo;
+  final String? program;
+  final String? branch;
+  final String? semester;
+  final String? academicYear;
+  final String? academicTerm;
+  final Map<String, dynamic>? extractedJson;
+  final String ocrStatus; // 'pending', 'processing', 'completed', 'paused', 'failed'
+  final Map<String, dynamic>? ocrProgress;
   final DateTime createdAt;
 
   StudentDocument({
     required this.id,
-    required this.studentId,
+    this.studentId,
+    this.uploadedBy,
     required this.docType,
     required this.title,
     required this.fileName,
@@ -263,13 +280,39 @@ class StudentDocument {
     this.contentBase64,
     this.extractedText,
     this.storagePath,
+    this.targetScope = 'class',
+    this.targetRollNo,
+    this.program,
+    this.branch,
+    this.semester,
+    this.academicYear = '2026-2027',
+    this.academicTerm,
+    this.extractedJson,
+    this.ocrStatus = 'pending',
+    this.ocrProgress,
     required this.createdAt,
   });
+
+  bool get isOcrCompleted => ocrStatus == 'completed';
+  bool get isOcrProcessing => ocrStatus == 'processing';
+  bool get isOcrPending => ocrStatus == 'pending' || ocrStatus.isEmpty;
+  bool get isOcrPaused => ocrStatus == 'paused';
+
+  String get term {
+    if (academicTerm != null && academicTerm!.isNotEmpty) {
+      return academicTerm!.toLowerCase();
+    }
+    if (semester != null && (semester!.toLowerCase() == 'odd' || semester!.toLowerCase() == 'even')) {
+      return semester!.toLowerCase();
+    }
+    return 'odd';
+  }
 
   factory StudentDocument.fromMap(Map<String, dynamic> map) {
     return StudentDocument(
       id: map['id'] ?? '',
-      studentId: map['student_id'] ?? '',
+      studentId: map['student_id'],
+      uploadedBy: map['uploaded_by'],
       docType: map['doc_type'] ?? 'other',
       title: map['title'] ?? '',
       fileName: map['file_name'] ?? '',
@@ -278,6 +321,16 @@ class StudentDocument {
       contentBase64: map['content_base64'],
       extractedText: map['extracted_text'],
       storagePath: map['storage_path'],
+      targetScope: map['target_scope'] ?? 'class',
+      targetRollNo: map['target_roll_no'],
+      program: map['program'],
+      branch: map['branch'],
+      semester: map['semester'],
+      academicYear: map['academic_year'] ?? '2026-2027',
+      academicTerm: map['academic_term'] ?? map['semester'],
+      extractedJson: map['extracted_json'] is Map ? Map<String, dynamic>.from(map['extracted_json']) : null,
+      ocrStatus: map['ocr_status'] ?? (map['extracted_text'] != null && (map['extracted_text'] as String).isNotEmpty ? 'completed' : 'pending'),
+      ocrProgress: map['ocr_progress'] is Map ? Map<String, dynamic>.from(map['ocr_progress']) : null,
       createdAt: DateTime.parse(map['created_at'] ?? DateTime.now().toIso8601String()),
     );
   }
@@ -285,7 +338,8 @@ class StudentDocument {
   Map<String, dynamic> toMap() {
     return {
       'id': id,
-      'student_id': studentId,
+      if (studentId != null) 'student_id': studentId,
+      if (uploadedBy != null) 'uploaded_by': uploadedBy,
       'doc_type': docType,
       'title': title,
       'file_name': fileName,
@@ -294,9 +348,71 @@ class StudentDocument {
       'content_base64': contentBase64,
       'extracted_text': extractedText,
       'storage_path': storagePath,
+      'target_scope': targetScope,
+      if (targetRollNo != null) 'target_roll_no': targetRollNo,
+      if (program != null) 'program': program,
+      if (branch != null) 'branch': branch,
+      if (semester != null) 'semester': semester,
+      'academic_year': academicYear,
+      if (extractedJson != null) 'extracted_json': extractedJson,
+      'ocr_status': ocrStatus,
+      if (ocrProgress != null) 'ocr_progress': ocrProgress,
       'created_at': createdAt.toIso8601String(),
     };
   }
+
+  StudentDocument copyWith({
+    String? id,
+    String? studentId,
+    String? uploadedBy,
+    String? docType,
+    String? title,
+    String? fileName,
+    String? mimeType,
+    int? fileSize,
+    String? contentBase64,
+    String? extractedText,
+    String? storagePath,
+    String? targetScope,
+    String? targetRollNo,
+    String? program,
+    String? branch,
+    String? semester,
+    String? academicYear,
+    String? academicTerm,
+    Map<String, dynamic>? extractedJson,
+    String? ocrStatus,
+    Map<String, dynamic>? ocrProgress,
+    DateTime? createdAt,
+  }) {
+    return StudentDocument(
+      id: id ?? this.id,
+      studentId: studentId ?? this.studentId,
+      uploadedBy: uploadedBy ?? this.uploadedBy,
+      docType: docType ?? this.docType,
+      title: title ?? this.title,
+      fileName: fileName ?? this.fileName,
+      mimeType: mimeType ?? this.mimeType,
+      fileSize: fileSize ?? this.fileSize,
+      contentBase64: contentBase64 ?? this.contentBase64,
+      extractedText: extractedText ?? this.extractedText,
+      storagePath: storagePath ?? this.storagePath,
+      targetScope: targetScope ?? this.targetScope,
+      targetRollNo: targetRollNo ?? this.targetRollNo,
+      program: program ?? this.program,
+      branch: branch ?? this.branch,
+      semester: semester ?? this.semester,
+      academicYear: academicYear ?? this.academicYear,
+      academicTerm: academicTerm ?? this.academicTerm,
+      extractedJson: extractedJson ?? this.extractedJson,
+      ocrStatus: ocrStatus ?? this.ocrStatus,
+      ocrProgress: ocrProgress ?? this.ocrProgress,
+      createdAt: createdAt ?? this.createdAt,
+    );
+  }
+
+  bool get isClassScope => targetScope == 'class';
+  bool get isIndividualScope => targetScope == 'individual';
 
   static String typeLabel(String type) {
     switch (type) {
@@ -305,7 +421,9 @@ class StudentDocument {
       case 'syllabus': return 'Syllabus';
       case 'marksheet': return 'Marksheet';
       case 'attendance': return 'Attendance';
+      case 'notes': return 'Lecture Notes';
       case 'assignment': return 'Assignment';
+      case 'notice': return 'Official Notice';
       default: return 'Document';
     }
   }

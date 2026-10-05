@@ -4,12 +4,14 @@ import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
 import '../utils/constants.dart';
+import '../utils/ai_config.dart';
+import 'document_json_schemas.dart';
 
 class AIService {
   static final _supabase = Supabase.instance.client;
 
   // ── CORE GEMINI CALL (via Supabase Edge Function) ──────────
-  static Future<http_Response_Mock> _invokeFunction(
+  static Future<HttpResponseMock> _invokeFunction(
     String task,
     String model,
     Map<String, dynamic> body,
@@ -25,7 +27,7 @@ class AIService {
       ).timeout(const Duration(seconds: 60));
 
       if (res.status == 200) {
-        return http_Response_Mock(res.status, jsonEncode(res.data));
+        return HttpResponseMock(res.status, jsonEncode(res.data));
       }
 
       debugPrint('❌ Supabase Function Error: Status=${res.status}');
@@ -33,6 +35,9 @@ class AIService {
       // Handle specific errors
       if (res.status == 429) {
         throw Exception('RATE_LIMIT: AI is currently overloaded.');
+      }
+      if (res.status == 503) {
+        throw Exception('MODEL_OVERLOADED_503: Model $model is experiencing high demand.');
       }
       if (res.status == 404) {
         throw Exception(
@@ -49,11 +54,13 @@ class AIService {
       throw Exception('AI_SERVICE_ERROR: ${res.status}');
     } catch (e) {
       debugPrint('❌ _invokeFunction Exception: $e');
-      if (e is FunctionException && e.status == 429) {
-        throw Exception('RATE_LIMIT: Model $model hit quota.');
+      if (e is FunctionException) {
+        if (e.status == 429) throw Exception('RATE_LIMIT: Model $model hit quota.');
+        if (e.status == 503) throw Exception('MODEL_OVERLOADED_503: Model $model high demand.');
       }
-      if (e is TimeoutException)
+      if (e is TimeoutException) {
         throw Exception('NETWORK_ERROR: Request timed out');
+      }
       rethrow;
     }
   }
@@ -74,6 +81,7 @@ class AIService {
             ]
           },
           'taskType': 'RETRIEVAL_QUERY',
+          'outputDimensionality': 768,
         },
       );
 
@@ -87,39 +95,62 @@ class AIService {
   }
 
   static Future<List<List<double>>> createBatchEmbeddings(
-      List<String> chunks) async {
+    List<String> chunks, {
+    void Function(int currentBatch, int totalBatches)? onProgress,
+  }) async {
     if (chunks.isEmpty) return [];
-    try {
-      final List<Map<String, dynamic>> requests = [];
-      for (final chunk in chunks) {
-        final trimmed = chunk.length > 6000 ? chunk.substring(0, 6000) : chunk;
-        requests.add({
-          'model': 'models/$kGeminiEmbedModel',
-          'taskType': 'RETRIEVAL_DOCUMENT',
-          'content': {
-            'parts': [
-              {'text': trimmed}
-            ]
-          }
-        });
+    final List<List<double>> allEmbeddings = [];
+    const int batchSize = 20;
+    final int totalBatches = (chunks.length / batchSize).ceil();
+
+    for (int b = 0; b < chunks.length; b += batchSize) {
+      final batchIndex = (b / batchSize).floor() + 1;
+      final int end = (b + batchSize < chunks.length) ? b + batchSize : chunks.length;
+      final batchChunks = chunks.sublist(b, end);
+
+      if (onProgress != null) {
+        onProgress(batchIndex, totalBatches);
       }
 
-      final res = await _invokeFunction(
-        'batchEmbedContents',
-        kGeminiEmbedModel,
-        {'requests': requests},
-      );
+      try {
+        final List<Map<String, dynamic>> requests = [];
+        for (final chunk in batchChunks) {
+          final trimmed = chunk.length > 6000 ? chunk.substring(0, 6000) : chunk;
+          requests.add({
+            'model': 'models/$kGeminiEmbedModel',
+            'taskType': 'RETRIEVAL_DOCUMENT',
+            'outputDimensionality': 768,
+            'content': {
+              'parts': [
+                {'text': trimmed}
+              ]
+            }
+          });
+        }
 
-      final data = jsonDecode(res.body);
-      final List embeddingsList = data['embeddings'];
-      return embeddingsList.map((e) {
-        final vals = (e['values'] as List);
-        return vals.map((v) => (v as num).toDouble()).toList();
-      }).toList();
-    } catch (e) {
-      debugPrint('❌ createBatchEmbeddings: $e');
-      rethrow;
+        final res = await _invokeFunction(
+          'batchEmbedContents',
+          kGeminiEmbedModel,
+          {'requests': requests},
+        );
+
+        final data = jsonDecode(res.body);
+        final List embeddingsList = data['embeddings'] as List? ?? [];
+        for (final e in embeddingsList) {
+          final vals = (e['values'] as List);
+          allEmbeddings.add(vals.map((v) => (v as num).toDouble()).toList());
+        }
+
+        if (b + batchSize < chunks.length) {
+          await Future.delayed(const Duration(milliseconds: 100));
+        }
+      } catch (e) {
+        debugPrint('❌ createBatchEmbeddings error on batch $batchIndex: $e');
+        if (allEmbeddings.isEmpty) rethrow;
+      }
     }
+
+    return allEmbeddings;
   }
 
   // ══════════════════════════════════════════════════════════
@@ -139,7 +170,7 @@ class AIService {
     try {
       final res = await _invokeFunction(
         'generateContent',
-        'gemini-2.5-flash', // Vision capable model
+        AIConfig.visionModel, // Vision capable model
         {
           'contents': [
             {
@@ -154,7 +185,10 @@ class AIService {
               ]
             }
           ],
-          'generationConfig': {'maxOutputTokens': 4096},
+          'generationConfig': {
+            'maxOutputTokens': 8192,
+            'temperature': 0.0,
+          },
         },
       );
 
@@ -164,6 +198,59 @@ class AIService {
       return text?.trim() ?? '';
     } catch (e) {
       debugPrint('❌ analyzeDocumentImage: $e');
+      rethrow;
+    }
+  }
+
+  /// Extracts structured Native JSON directly from document images using Gemini JSON mode
+  static Future<Map<String, dynamic>> extractDocumentNativeJson({
+    required String base64Data,
+    required String mimeType,
+    required String docType,
+  }) async {
+    final prompt = DocumentJsonSchemas.getPromptForDocType(docType);
+
+    try {
+      final res = await _invokeFunction(
+        'generateContent',
+        AIConfig.visionModel,
+        {
+          'contents': [
+            {
+              'parts': [
+                {
+                  'inline_data': {
+                    'mime_type': mimeType,
+                    'data': base64Data,
+                  }
+                },
+                {'text': prompt},
+              ]
+            }
+          ],
+          'generationConfig': {
+            'response_mime_type': 'application/json',
+            'maxOutputTokens': 8192,
+            'temperature': 0.0,
+          },
+        },
+      );
+
+      final data = jsonDecode(res.body);
+      final text = data['candidates']?[0]['content']?['parts']?[0]['text'] as String?;
+      if (text == null || text.trim().isEmpty) {
+        throw Exception('Empty JSON output from vision model');
+      }
+
+      final parsed = jsonDecode(text.trim());
+      if (parsed is Map<String, dynamic>) {
+        return parsed;
+      } else if (parsed is List) {
+        return {'items': parsed};
+      }
+      return {'data': parsed};
+    } catch (e) {
+      debugPrint('❌ extractDocumentNativeJson error: $e');
       rethrow;
     }
   }
@@ -180,9 +267,11 @@ class AIService {
     String? program,
     String? branch,
     String? semester,
+    String? section,
     List<String>? skills,
     List<String>? interests,
     String? ragContext,
+    void Function(String partialText)? onStreamChunk,
   }) async {
     final systemPrompt = buildStudentPrompt(
       name: studentName,
@@ -191,14 +280,27 @@ class AIService {
       program: program,
       branch: branch,
       semester: semester,
+      section: section,
       skills: skills,
       interests: interests,
       ragContext: ragContext,
     );
-    return _callGemini(
+    final fullResponse = await _callGemini(
       systemPrompt: systemPrompt,
-      contents: _buildContents(history, newMessage),
+      contents: ContextWindowManager.buildSlidingWindow(
+        rawHistory: history,
+        newMessage: newMessage,
+        maxTurns: AIConfig.maxHistoryTurns,
+      ),
+      temperature: AIConfig.studentTemperature,
     );
+
+    // Provide word-by-word streaming effect if consumer requests it
+    if (onStreamChunk != null && fullResponse.isNotEmpty) {
+      await _streamText(fullResponse, onStreamChunk);
+    }
+
+    return fullResponse;
   }
 
   static Future<String> sendMentorMessage({
@@ -211,6 +313,7 @@ class AIService {
     int? totalStudents,
     int? activeChats,
     String? ragContext,
+    void Function(String partialText)? onStreamChunk,
   }) async {
     final systemPrompt = buildMentorPrompt(
       mentorName: mentorName,
@@ -222,8 +325,13 @@ class AIService {
       ragContext: ragContext,
     );
 
+    // Sliding window for mentor chat (keep last 10 messages)
+    final recentHistory = history.length > AIConfig.maxHistoryTurns
+        ? history.sublist(history.length - AIConfig.maxHistoryTurns)
+        : history;
+
     final contents = <Map<String, dynamic>>[];
-    for (final msg in history) {
+    for (final msg in recentHistory) {
       final role = msg['role'] == 'assistant' ? 'model' : 'user';
       final content = msg['content'] as String? ?? '';
       if (content.trim().isEmpty) continue;
@@ -241,12 +349,40 @@ class AIService {
       ]
     });
 
-    return _callGemini(systemPrompt: systemPrompt, contents: contents);
+    final fullResponse = await _callGemini(
+      systemPrompt: systemPrompt,
+      contents: contents,
+      temperature: AIConfig.mentorTemperature,
+    );
+
+    if (onStreamChunk != null && fullResponse.isNotEmpty) {
+      await _streamText(fullResponse, onStreamChunk);
+    }
+
+    return fullResponse;
+  }
+
+  /// Smooth client-side batched word streaming effect
+  static Future<void> _streamText(String fullText, void Function(String) onStreamChunk) async {
+    final words = fullText.split(' ');
+    final buffer = StringBuffer();
+    const int batchSize = 3;
+    for (int i = 0; i < words.length; i += batchSize) {
+      final end = (i + batchSize < words.length) ? i + batchSize : words.length;
+      for (int j = i; j < end; j++) {
+        if (buffer.isNotEmpty) buffer.write(' ');
+        buffer.write(words[j]);
+      }
+      onStreamChunk(buffer.toString());
+      // Smooth typing delay without starving the browser UI loop
+      await Future.delayed(const Duration(milliseconds: 16));
+    }
   }
 
   static Future<String> _callGemini({
     required String systemPrompt,
     required List<Map<String, dynamic>> contents,
+    double temperature = 0.6,
   }) async {
     final modelsToTry = [kGeminiChatModel, ...kGeminiFallbacks];
     String? lastError;
@@ -260,6 +396,12 @@ class AIService {
           {
             'systemPrompt': systemPrompt,
             'contents': contents,
+            'generationConfig': {
+              'maxOutputTokens': AIConfig.maxOutputTokens,
+              'temperature': temperature,
+              'topP': 0.9,
+              'thinkingConfig': {'thinkingBudget': 0},
+            },
             'safetySettings': [
               {
                 'category': 'HARM_CATEGORY_HARASSMENT',
@@ -279,45 +421,22 @@ class AIService {
         return text?.trim() ?? '⚠️ AI response was empty.';
       } catch (e) {
         lastError = e.toString();
-        // Catch 429 status code or our custom RATE_LIMIT string
+        // Catch 429 quota exhaustion or 503 high demand spikes and rotate to fallback model
         if (lastError.contains('RATE_LIMIT') ||
             lastError.contains('429') ||
-            lastError.contains('RESOURCE_EXHAUSTED')) {
-          debugPrint('⏳ Model $model hit rate limit. Trying fallback...');
+            lastError.contains('503') ||
+            lastError.contains('MODEL_OVERLOADED') ||
+            lastError.contains('RESOURCE_EXHAUSTED') ||
+            lastError.contains('UNAVAILABLE')) {
+          debugPrint('⏳ Model $model unavailable (429/503). Rotating to fallback model...');
           continue;
         }
-        // If it's not a rate limit error, rethrow immediately
+        // If it's not a rate limit / demand error, rethrow immediately
         rethrow;
       }
     }
 
     throw Exception(lastError ?? 'All models failed to respond.');
-  }
-
-  // ── HELPERS ───────────────────────────────────────────────
-
-  static List<Map<String, dynamic>> _buildContents(
-      List<MessageModel> history, String newMessage) {
-    final contents = <Map<String, dynamic>>[];
-    final recentHistory =
-        history.length > 30 ? history.sublist(history.length - 30) : history;
-
-    for (final m in recentHistory) {
-      if (!m.isUser && !m.isAssistant) continue;
-      contents.add({
-        'role': m.isUser ? 'user' : 'model',
-        'parts': [
-          {'text': m.content.trim()}
-        ]
-      });
-    }
-    contents.add({
-      'role': 'user',
-      'parts': [
-        {'text': newMessage}
-      ]
-    });
-    return contents;
   }
 
   static Future<Map<String, String>?> extractStudentDetails(
@@ -330,52 +449,64 @@ class AIService {
           'generateContent',
           model,
           {
+            'systemPrompt':
+                'Extract student profile details from this message as JSON. '
+                    'Fields: name, program, branch, semester. '
+                    'Use empty string "" if unknown. Return ONLY valid JSON, no markdown.',
             'contents': [
               {
+                'role': 'user',
                 'parts': [
-                  {
-                    'text': 'Extract student details from: "$message"\n'
-                        'Return JSON: {"name":"","program":"","branch":"","semester":""}'
-                  }
+                  {'text': message}
                 ]
               }
             ],
+            'generationConfig': {
+              'responseMimeType': 'application/json',
+              'temperature': 0.1,
+            },
           },
         );
+
         final data = jsonDecode(res.body);
-        final text =
-            data['candidates'][0]['content']['parts'][0]['text'] as String;
-        final clean =
-            text.replaceAll('```json', '').replaceAll('```', '').trim();
-        final det = jsonDecode(clean) as Map<String, dynamic>;
-        return det.map((k, v) => MapEntry(k, v.toString()));
+        final raw = data['candidates']?[0]['content']?['parts']?[0]['text'];
+        if (raw == null) return null;
+
+        final cleaned =
+            raw.trim().replaceAll('```json', '').replaceAll('```', '').trim();
+        final map = jsonDecode(cleaned) as Map<String, dynamic>;
+
+        return {
+          'name': (map['name'] ?? '').toString(),
+          'program': (map['program'] ?? '').toString(),
+          'branch': (map['branch'] ?? '').toString(),
+          'semester': (map['semester'] ?? '').toString(),
+        };
       } catch (e) {
-        final errStr = e.toString();
-        if (errStr.contains('RATE_LIMIT') ||
-            errStr.contains('429') ||
-            errStr.contains('RESOURCE_EXHAUSTED')) {
-          debugPrint(
-              '⏳ Extraction: Model $model hit rate limit. Trying fallback...');
-          continue;
-        }
-        return null;
+        debugPrint('extractStudentDetails failed on $model: $e');
+        continue;
       }
     }
     return null;
   }
 
-  static String generateGreeting(String? userName) =>
-      buildFirstMessage(userName);
+  static String generateGreeting(String? userName,
+          {String? branch, String? semester}) =>
+      buildFirstMessage(userName, branch: branch, semester: semester);
 
   static String friendlyError(String e) {
-    if (e.contains('RATE_LIMIT'))
+    if (e.contains('RATE_LIMIT')) {
       return '⏳ **AI is busy.** Please wait a minute and try again.';
-    if (e.contains('NETWORK_ERROR'))
+    }
+    if (e.contains('NETWORK_ERROR')) {
       return '🌐 **Network issue.** Check your connection.';
-    if (e.contains('NOT_FOUND'))
+    }
+    if (e.contains('NOT_FOUND')) {
       return '🚀 **Backend not ready.** Function "chat" is not deployed yet.';
-    if (e.contains('CONFIG_ERROR'))
+    }
+    if (e.contains('CONFIG_ERROR')) {
       return '🔑 **Config Error.** Gemini API keys are missing in Supabase secrets.';
+    }
 
     // Fallback: show the actual error for easier debugging
     return '❌ **Something went wrong.**\n\nDetail: ${e.replaceAll('Exception:', '').trim()}';
@@ -383,8 +514,8 @@ class AIService {
 }
 
 // Simple wrapper to match expected behavior
-class http_Response_Mock {
+class HttpResponseMock {
   final int statusCode;
   final String body;
-  http_Response_Mock(this.statusCode, this.body);
+  HttpResponseMock(this.statusCode, this.body);
 }

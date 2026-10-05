@@ -1,4 +1,5 @@
 // lib/services/supabase_service.dart
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/models.dart';
@@ -34,7 +35,7 @@ class SupabaseService {
   static Future<UserModel> register({
     required String email, required String password, required String name,
     required String role, String? program, String? branch,
-    String? semester, String? mentorEmail, String? rollNumber,
+    String? semester, String? section, String? mentorEmail, String? rollNumber,
     String? department, String? designation, String? phone,
   }) async {
     final e = email.trim().toLowerCase();
@@ -49,7 +50,7 @@ class SupabaseService {
       }
       final exists = await _db.from(kUsersTable).select('id').eq('email', e);
       if (exists.isNotEmpty) throw Exception('duplicate_email: Already registered.');
-      final row = await _db.from(kUsersTable).insert({
+      final insertData = <String, dynamic>{
         'email': e, 'password_hash': password.trim(),
         'name': name.trim(), 'role': role,
         'program':  (role=='student' && program?.trim().isNotEmpty==true)  ? program!.trim()  : null,
@@ -61,7 +62,11 @@ class SupabaseService {
         'department': department?.trim(),
         'designation': (role=='mentor') ? designation?.trim() : null,
         'phone': phone?.trim(),
-      }).select().single();
+      };
+      if (role == 'student' && section?.trim().isNotEmpty == true) {
+        insertData['section'] = section!.trim();
+      }
+      final row = await _db.from(kUsersTable).insert(insertData).select().single();
       return UserModel.fromMap(row);
     } on PostgrestException catch (ex) {
       if (ex.code == '23505') throw Exception('duplicate_email: Already registered.');
@@ -97,12 +102,29 @@ class SupabaseService {
   // ══════════════════════════════════════════════════════════
 
   static Future<ConversationModel> createConversation(
-      String studentId, {String? mentorEmail}) async {
+    String studentId, {
+    String? mentorEmail,
+    String? studentName,
+    String? studentRollNo,
+    String? studentProgram,
+    String? studentBranch,
+    String? studentSemester,
+    bool? studentDetailsCollected,
+  }) async {
+    final hasDetails = studentDetailsCollected ??
+        (studentName != null && studentName.isNotEmpty);
     final row = await _db.from(kConversationsTable).insert({
-      'student_id': studentId, 'title': 'New Conversation',
-      'is_first_message_done': false, 'student_details_collected': false,
+      'student_id': studentId,
+      'title': 'New Conversation',
+      'is_first_message_done': false,
+      'student_details_collected': hasDetails,
       'status': 'active',
       if (mentorEmail != null) 'mentor_email': mentorEmail.toLowerCase(),
+      if (studentName != null) 'student_name': studentName,
+      if (studentRollNo != null) 'student_roll_no': studentRollNo,
+      if (studentProgram != null) 'student_program': studentProgram,
+      if (studentBranch != null) 'student_branch': studentBranch,
+      if (studentSemester != null) 'student_semester': studentSemester,
     }).select().single();
     return ConversationModel.fromMap(row);
   }
@@ -189,22 +211,130 @@ class SupabaseService {
   }
 
   // ══════════════════════════════════════════════════════════
-  // STUDENT DOCUMENTS
+  // ══════════════════════════════════════════════════════════
+  // ACADEMIC DOCUMENTS (MENTOR PUBLISHED)
   // ══════════════════════════════════════════════════════════
 
   static Future<StudentDocument> uploadDocument({
-    required String studentId, required String docType,
-    required String title, required String fileName,
-    required String mimeType, required int fileSize,
-    required String contentBase64, String? extractedText,
+    String? studentId,
+    String? uploadedBy,
+    required String docType,
+    required String title,
+    required String fileName,
+    required String mimeType,
+    required int fileSize,
+    String? contentBase64,
+    Uint8List? rawBytes,
+    String? storagePath,
+    String? extractedText,
+    String targetScope = 'class',
+    String? targetRollNo,
+    String? program,
+    String? branch,
+    String? semester,
+    String academicYear = '2025-2026',
   }) async {
+    final uploader = uploadedBy ?? studentId;
+    final termVal = (semester != null && (semester.toLowerCase() == 'odd' || semester.toLowerCase() == 'even'))
+        ? semester.toLowerCase()
+        : 'odd';
+
+    // Single-instance replacement for class-wide documents in the same academic year & term
+    if (targetScope == 'class' && uploader != null) {
+      try {
+        final existing = await _db.from(kDocumentsTable)
+            .select('id')
+            .eq('uploaded_by', uploader)
+            .eq('doc_type', docType)
+            .eq('target_scope', 'class')
+            .eq('academic_year', academicYear)
+            .eq('semester', termVal);
+        for (final oldRow in (existing as List)) {
+          final oldId = oldRow['id'] as String;
+          await deleteDocument(oldId);
+          debugPrint('🔄 Replaced previous $docType document ($oldId) for $academicYear $termVal');
+        }
+      } catch (e) {
+        debugPrint('Notice during old document replacement: $e');
+      }
+    }
+
+    String? finalStoragePath = storagePath;
+    String? safeBase64 = contentBase64;
+
+    // If file is > 1.5MB or rawBytes is provided without base64, upload directly to Supabase Storage Bucket
+    if (rawBytes != null && (fileSize > 1.5 * 1024 * 1024 || safeBase64 == null)) {
+      try {
+        final cleanFileName = fileName.replaceAll(RegExp(r'[^a-zA-Z0-9._-]'), '_');
+        final remotePath = '${docType}_${DateTime.now().millisecondsSinceEpoch}_$cleanFileName';
+
+        await _db.storage.from('academic_documents').uploadBinary(
+          remotePath,
+          rawBytes,
+          fileOptions: FileOptions(
+            contentType: mimeType,
+            upsert: true,
+          ),
+        );
+        finalStoragePath = remotePath;
+        safeBase64 = null; // Don't bloat PostgreSQL text column!
+        debugPrint('📦 Uploaded ${(fileSize / (1024 * 1024)).toStringAsFixed(2)}MB file directly to Supabase Storage: $remotePath');
+      } catch (storageErr) {
+        debugPrint('⚠️ Storage bucket notice (will fallback): $storageErr');
+      }
+    }
+
+    // Insert lightweight metadata row into academic_documents (PostgreSQL statement executes in ~20ms)
     final row = await _db.from(kDocumentsTable).insert({
-      'student_id': studentId, 'doc_type': docType, 'title': title,
-      'file_name': fileName, 'mime_type': mimeType, 'file_size': fileSize,
-      'content_base64': contentBase64,
+      if (uploader != null) 'uploaded_by': uploader,
+      'doc_type': docType,
+      'title': title,
+      'file_name': fileName,
+      'mime_type': mimeType,
+      'file_size': fileSize,
+      if (safeBase64 != null && safeBase64.isNotEmpty) 'content_base64': safeBase64,
+      if (finalStoragePath != null) 'storage_path': finalStoragePath,
       if (extractedText != null) 'extracted_text': extractedText,
+      'target_scope': targetScope,
+      if (targetRollNo != null && targetRollNo.isNotEmpty)
+        'target_roll_no': targetRollNo,
+      if (program != null && program.isNotEmpty) 'program': program,
+      if (branch != null && branch.isNotEmpty) 'branch': branch,
+      'semester': termVal,
+      'academic_year': academicYear,
     }).select().single();
+
+    // Ensure shadow record in student_documents to satisfy legacy foreign keys on chunk tables
+    try {
+      await _db.from('student_documents').upsert({
+        'id': row['id'],
+        'student_id': uploader,
+        'doc_type': docType,
+        'title': title,
+        'file_name': fileName,
+        'mime_type': mimeType,
+      }).catchError((_) => null);
+    } catch (_) {}
+
     return StudentDocument.fromMap(row);
+  }
+
+  /// Loads raw document binary bytes from either storage bucket or base64
+  static Future<Uint8List?> getDocumentBytes(StudentDocument doc) async {
+    if (doc.storagePath != null && doc.storagePath!.isNotEmpty) {
+      try {
+        final bytes = await _db.storage.from('academic_documents').download(doc.storagePath!);
+        return bytes;
+      } catch (e) {
+        debugPrint('⚠️ Error downloading document bytes from storage: $e');
+      }
+    }
+    if (doc.contentBase64 != null && doc.contentBase64!.isNotEmpty) {
+      try {
+        return base64Decode(doc.contentBase64!);
+      } catch (_) {}
+    }
+    return null;
   }
 
   static Future<void> updateDocumentExtractedText(
@@ -213,16 +343,46 @@ class SupabaseService {
         .update({'extracted_text': text}).eq('id', docId);
   }
 
-  static Future<List<StudentDocument>> getStudentDocuments(String studentId) async {
+  /// Get all documents uploaded by a specific mentor
+  static Future<List<StudentDocument>> getMentorDocuments(String mentorId) async {
     try {
       final rows = await _db.from(kDocumentsTable).select()
-          .eq('student_id', studentId).order('created_at', ascending: false);
+          .eq('uploaded_by', mentorId)
+          .order('created_at', ascending: false);
       return (rows as List).map((e) {
         final m = Map<String, dynamic>.from(e);
-        m.remove('content_base64'); // strip for list
+        m.remove('content_base64');
         return StudentDocument.fromMap(m);
       }).toList();
     } catch (_) { return []; }
+  }
+
+  /// Get verified academic documents available to a student (class scope + personal)
+  static Future<List<StudentDocument>> getStudentAccessibleDocuments({
+    required String studentId,
+    String? rollNo,
+    String? program,
+    String? branch,
+  }) async {
+    try {
+      var query = _db.from(kDocumentsTable).select();
+      if (rollNo != null && rollNo.isNotEmpty) {
+        query = query.or('target_scope.eq.class,target_roll_no.eq.$rollNo');
+      } else {
+        query = query.eq('target_scope', 'class');
+      }
+      final rows = await query.order('created_at', ascending: false);
+      return (rows as List).map((e) {
+        final m = Map<String, dynamic>.from(e);
+        m.remove('content_base64');
+        return StudentDocument.fromMap(m);
+      }).toList();
+    } catch (_) { return []; }
+  }
+
+  /// Deprecated alias pointing to getStudentAccessibleDocuments
+  static Future<List<StudentDocument>> getStudentDocuments(String studentId) async {
+    return getStudentAccessibleDocuments(studentId: studentId);
   }
 
   static Future<StudentDocument?> getDocumentWithContent(String docId) async {
@@ -233,96 +393,271 @@ class SupabaseService {
   }
 
   static Future<void> deleteDocument(String docId) async {
-    // Also delete chunks
-    await _db.from(kChunksTable).delete().eq('document_id', docId);
+    // Clean up from all 6 dedicated category tables as well as legacy tables
+    await Future.wait([
+      _db.from('marksheet_chunks').delete().eq('document_id', docId).catchError((_) => null),
+      _db.from('attendance_chunks').delete().eq('document_id', docId).catchError((_) => null),
+      _db.from('syllabus_chunks').delete().eq('document_id', docId).catchError((_) => null),
+      _db.from('calendar_chunks').delete().eq('document_id', docId).catchError((_) => null),
+      _db.from('assignment_chunks').delete().eq('document_id', docId).catchError((_) => null),
+      _db.from('circular_chunks').delete().eq('document_id', docId).catchError((_) => null),
+      _db.from(kChunksTable).delete().eq('document_id', docId).catchError((_) => null),
+    ]);
     await _db.from(kDocumentsTable).delete().eq('id', docId);
   }
 
+  /// Atomically appends a page's Native JSON into student_documents.extracted_json
+  static Future<void> appendDocumentPageJson({
+    required String docId,
+    required int pageNumber,
+    required Map<String, dynamic> pageJson,
+    int? totalPages,
+  }) async {
+    try {
+      await _db.rpc('append_document_page_json', params: {
+        'p_doc_id': docId,
+        'p_page_number': pageNumber,
+        'p_page_json': pageJson,
+      });
+
+      if (totalPages != null && totalPages > 0) {
+        await _db.from(kDocumentsTable).update({
+          'ocr_progress': {
+            'current': pageNumber,
+            'total': totalPages,
+          }
+        }).eq('id', docId);
+      }
+    } catch (e) {
+      debugPrint('❌ appendDocumentPageJson error: $e');
+      rethrow;
+    }
+  }
+
+  /// Updates document OCR lifecycle state and progress metrics
+  static Future<void> updateDocumentOcrStatus({
+    required String docId,
+    required String status, // 'pending', 'processing', 'completed', 'paused', 'failed'
+    Map<String, dynamic>? progress,
+  }) async {
+    try {
+      final updateData = <String, dynamic>{
+        'ocr_status': status,
+        'updated_at': DateTime.now().toIso8601String(),
+      };
+      if (progress != null) {
+        updateData['ocr_progress'] = progress;
+      }
+      await _db.from(kDocumentsTable).update(updateData).eq('id', docId);
+    } catch (e) {
+      debugPrint('⚠️ updateDocumentOcrStatus error: $e');
+    }
+  }
+
   // ══════════════════════════════════════════════════════════
-  // RAG — DOCUMENT CHUNKS (vector embeddings)
+  // RAG — 6-CATEGORY DOMAIN-PARTITIONED CHUNKS & VECTOR SEARCH
   // ══════════════════════════════════════════════════════════
 
-  /// Save text chunks with their embeddings to Supabase
+  static String _resolveCategoryTable(String docType) {
+    switch (docType.toLowerCase()) {
+      case 'marksheet':
+      case 'result':
+      case 'academic_results':
+        return 'marksheet_chunks';
+      case 'attendance':
+      case 'attendance_register':
+        return 'attendance_chunks';
+      case 'syllabus':
+      case 'curriculum':
+        return 'syllabus_chunks';
+      case 'academic_calendar':
+      case 'calendar':
+      case 'datesheet':
+        return 'calendar_chunks';
+      case 'assignment':
+      case 'project':
+        return 'assignment_chunks';
+      case 'circular':
+      case 'notice':
+      case 'other':
+      case 'others':
+      default:
+        return 'circular_chunks';
+    }
+  }
+
   static Future<void> saveDocumentChunks({
     required String documentId,
-    required String studentId,
+    String? docType,
+    String? studentId,
+    String academicYear = '2026-2027',
+    String semester = 'odd',
+    String targetScope = 'class',
+    String? targetRollNo,
+    String? subjectCode,
+    String? subjectName,
     required List<String> chunks,
     required List<List<double>> embeddings,
   }) async {
-    debugPrint('💾 Saving ${chunks.length} chunks for doc $documentId (Batch size: 20)');
+    final targetCategoryTable = _resolveCategoryTable(docType ?? 'other');
+    debugPrint('💾 Saving ${chunks.length} chunks into [$targetCategoryTable] & [$kChunksTable] for doc $documentId (Year: $academicYear, Term: $semester, Scope: $targetScope)');
     
-    // Batch the inserts to avoid large payload timeouts
+    // Ensure shadow record in student_documents exists to satisfy legacy foreign keys
+    try {
+      await _db.from('student_documents').upsert({
+        'id': documentId,
+        'student_id': studentId,
+        'doc_type': docType ?? 'other',
+        'title': 'Document $documentId',
+        'file_name': 'document.pdf',
+        'mime_type': 'application/pdf',
+      }).catchError((_) => null);
+    } catch (_) {}
+
     const int batchSize = 20;
     for (int i = 0; i < chunks.length; i += batchSize) {
-      final List<Map<String, dynamic>> batchRows = [];
+      final List<Map<String, dynamic>> categoryRows = [];
+      final List<Map<String, dynamic>> legacyRows = [];
       final int end = (i + batchSize < chunks.length) ? i + batchSize : chunks.length;
       
       for (int j = i; j < end; j++) {
-        batchRows.add({
+        final emb = embeddings[j];
+        final safeEmbedding = emb.length > 768 ? emb.sublist(0, 768) : emb;
+
+        // Specialized category record
+        final Map<String, dynamic> row = {
           'document_id': documentId,
-          'student_id':  studentId,
-          'chunk_text':  chunks[j],
+          'academic_year': academicYear,
+          'term': semester,
+          'chunk_text': chunks[j],
           'chunk_index': j,
-          'embedding':   embeddings[j],
+          'embedding': safeEmbedding,
+        };
+
+        if (targetCategoryTable == 'marksheet_chunks') {
+          row['target_scope'] = targetScope;
+          if (targetRollNo != null && targetRollNo.isNotEmpty) {
+            row['target_roll_no'] = targetRollNo;
+          }
+        } else if (targetCategoryTable == 'attendance_chunks') {
+          row['target_scope'] = targetScope;
+          if (targetRollNo != null && targetRollNo.isNotEmpty) {
+            row['target_roll_no'] = targetRollNo;
+          }
+          if (subjectCode != null) row['subject_code'] = subjectCode;
+        } else if (targetCategoryTable == 'syllabus_chunks') {
+          if (subjectCode != null) row['subject_code'] = subjectCode;
+          if (subjectName != null) row['subject_name'] = subjectName;
+        } else if (targetCategoryTable == 'assignment_chunks') {
+          if (subjectCode != null) row['subject_code'] = subjectCode;
+        }
+
+        categoryRows.add(row);
+
+        // Legacy baseline row
+        legacyRows.add({
+          'document_id': documentId,
+          'chunk_text': chunks[j],
+          'chunk_index': j,
+          'embedding': safeEmbedding,
         });
       }
       
       try {
-        await _db.from(kChunksTable).insert(batchRows);
-        debugPrint('... saved batch ${i ~/ batchSize + 1} (${batchRows.length} chunks)');
+        // 1. Insert into dedicated category table
+        await _db.from(targetCategoryTable).insert(categoryRows);
+        // 2. Insert into unified legacy table for full redundancy
+        await _db.from(kChunksTable).insert(legacyRows).catchError((_) => null);
+
+        debugPrint('... saved batch ${i ~/ batchSize + 1} (${categoryRows.length} chunks) to $targetCategoryTable');
         
-        // Safety delay to prevent statement timeouts on large files
         if (i + batchSize < chunks.length) {
-          await Future.delayed(const Duration(milliseconds: 500));
+          await Future.delayed(const Duration(milliseconds: 300));
         }
-      } on PostgrestException catch (e) {
-        debugPrint('❌ DB Error during chunk insert: ${e.message} (Code: ${e.code})');
-        if (e.message.contains('dimension')) {
-          throw Exception('DB_DIMENSION_MISMATCH: AI embedding dimension ($kEmbeddingDims) does not match your database table. Run migration if needed.');
-        }
-        throw Exception('DB_CHUNK_ERROR: Failed to save search index (batch ${i ~/ batchSize + 1}).');
       } catch (e) {
-        debugPrint('❌ saveDocumentChunks batch error: $e');
+        debugPrint('❌ saveDocumentChunks error on $targetCategoryTable: $e');
         rethrow;
       }
     }
     
-    debugPrint('✅ Saved ${chunks.length} total chunks');
+    debugPrint('✅ Successfully saved ${chunks.length} chunks to category table [$targetCategoryTable]');
   }
 
-  /// Vector similarity search — find most relevant chunks
+  /// High-precision Category-Partitioned similarity search with temporal and scope pre-filtering
   static Future<List<String>> searchSimilarChunks({
-    required String studentId,
+    String? studentId,
+    String? rollNo,
+    String? docType,
+    String? academicYear,
+    String? term,
+    String? targetScope,
     required List<double> queryEmbedding,
-    int limit = 5,
-    double minSimilarity = 0.5,
+    int limit = 8,
+    double minSimilarity = 0.20,
   }) async {
     try {
-      debugPrint('🔍 RAG: Searching chunks for student $studentId');
+      final safeQueryEmb = queryEmbedding.length > 768
+          ? queryEmbedding.sublist(0, 768)
+          : queryEmbedding;
 
-      final res = await _db.rpc('match_document_chunks', params: {
-        'query_embedding':  queryEmbedding,
-        'match_student_id': studentId,
-        'match_count':      limit,
-        'min_similarity':   minSimilarity,
+      final categoryName = docType != null && docType.isNotEmpty ? docType : 'all';
+
+      // 1. Call match_category_chunks RPC with strict domain filtering
+      try {
+        final res = await _db.rpc('match_category_chunks', params: {
+          'category_name': categoryName,
+          'query_embedding': safeQueryEmb,
+          if (academicYear != null && academicYear.isNotEmpty) 'filter_year': academicYear,
+          if (term != null && term.isNotEmpty) 'filter_term': term,
+          if (targetScope != null && targetScope.isNotEmpty) 'filter_scope': targetScope,
+          if (rollNo != null && rollNo.isNotEmpty) 'filter_roll_no': rollNo,
+          'match_count': limit,
+          'min_similarity': minSimilarity,
+        });
+
+        final chunks = (res as List)
+            .map((r) => r['chunk_text'] as String)
+            .where((t) => t.trim().isNotEmpty)
+            .toList();
+
+        if (chunks.isNotEmpty) {
+          debugPrint('✅ Category RAG ($categoryName, Year: $academicYear, Term: $term): Found ${chunks.length} chunks');
+          return chunks;
+        }
+      } catch (e) {
+        debugPrint('⚠️ match_category_chunks notice: $e');
+      }
+
+      // 2. Fallback to match_document_chunks if category search was empty
+      final resOld = await _db.rpc('match_document_chunks', params: {
+        'query_embedding': safeQueryEmb,
+        if (studentId != null && studentId.isNotEmpty) 'match_student_id': studentId,
+        'match_count': limit,
+        'min_similarity': minSimilarity,
       });
 
-      final chunks = (res as List)
+      final chunks = (resOld as List)
           .map((r) => r['chunk_text'] as String)
           .where((t) => t.trim().isNotEmpty)
           .toList();
 
-      debugPrint('✅ RAG: Found ${chunks.length} relevant chunks');
       return chunks;
     } catch (e) {
-      debugPrint('⚠️ RAG search failed (no chunks yet?): $e');
+      debugPrint('⚠️ RAG search failed: $e');
       return [];
     }
   }
 
-  /// Delete all chunks for a document
   static Future<void> deleteDocumentChunks(String documentId) async {
-    await _db.from(kChunksTable).delete().eq('document_id', documentId);
+    await Future.wait([
+      _db.from('marksheet_chunks').delete().eq('document_id', documentId).catchError((_) => null),
+      _db.from('attendance_chunks').delete().eq('document_id', documentId).catchError((_) => null),
+      _db.from('syllabus_chunks').delete().eq('document_id', documentId).catchError((_) => null),
+      _db.from('calendar_chunks').delete().eq('document_id', documentId).catchError((_) => null),
+      _db.from('assignment_chunks').delete().eq('document_id', documentId).catchError((_) => null),
+      _db.from('circular_chunks').delete().eq('document_id', documentId).catchError((_) => null),
+      _db.from(kChunksTable).delete().eq('document_id', documentId).catchError((_) => null),
+    ]);
   }
 
   // ══════════════════════════════════════════════════════════
@@ -439,30 +774,33 @@ class SupabaseService {
     try {
       final List<Map<String, dynamic>> allRecords = [];
 
-      // 1. Fetch from Attendance table
-      if (rollNo != null && rollNo.isNotEmpty) {
-        final rows = await _db.from(kAcademicRecordsTable).select()
-            .ilike('student_roll_no', rollNo.trim());
-        if (rows.isNotEmpty) {
-          allRecords.addAll(List<Map<String, dynamic>>.from(rows).map((r) => {...r, 'record_type': 'attendance'}));
-        }
+      // Resolve student's roll number if not directly supplied
+      String? resolvedRollNo = rollNo?.trim();
+      if ((resolvedRollNo == null || resolvedRollNo.isEmpty) && studentId.isNotEmpty) {
+        try {
+          final userRow = await _db.from(kUsersTable).select('roll_number').eq('id', studentId).maybeSingle();
+          if (userRow != null && userRow['roll_number'] != null) {
+            resolvedRollNo = userRow['roll_number'].toString().trim();
+          }
+        } catch (_) {}
       }
 
-      // 2. Fetch from Academic Results table (as backup/extra data)
-      if (rollNo != null && rollNo.isNotEmpty) {
-        final resultRows = await _db.from(kAcademicResultsTable).select()
-            .ilike('student_roll_no', rollNo.trim());
-        if (resultRows.isNotEmpty) {
-          allRecords.addAll(List<Map<String, dynamic>>.from(resultRows).map((r) => {...r, 'record_type': 'result'}));
-        }
+      if (resolvedRollNo == null || resolvedRollNo.isEmpty) {
+        return [];
       }
 
-      // 3. Fallback by student_id if nothing found by roll number
-      if (allRecords.isEmpty) {
-        final rows = await _db.from(kAcademicRecordsTable).select().eq('student_id', studentId);
-        if (rows.isNotEmpty) {
-          allRecords.addAll(List<Map<String, dynamic>>.from(rows).map((r) => {...r, 'record_type': 'attendance'}));
-        }
+      // 1. Fetch from Attendance table (linked by student_roll_no)
+      final rows = await _db.from(kAcademicRecordsTable).select()
+          .ilike('student_roll_no', resolvedRollNo);
+      if (rows.isNotEmpty) {
+        allRecords.addAll(List<Map<String, dynamic>>.from(rows).map((r) => {...r, 'record_type': 'attendance'}));
+      }
+
+      // 2. Fetch from Academic Results table (linked by student_roll_no)
+      final resultRows = await _db.from(kAcademicResultsTable).select()
+          .ilike('student_roll_no', resolvedRollNo);
+      if (resultRows.isNotEmpty) {
+        allRecords.addAll(List<Map<String, dynamic>>.from(resultRows).map((r) => {...r, 'record_type': 'result'}));
       }
 
       return allRecords;
@@ -472,19 +810,27 @@ class SupabaseService {
     }
   }
 
-  static Future<List<dynamic>> getTimetable(String studentId, String day) async {
+  static Future<List<dynamic>> getTimetable(String studentId, String day, {String? rollNo}) async {
     try {
-      final row = await _db.from(kSchedulesTable).select()
-          .eq('student_id', studentId).eq('day_of_week', day).maybeSingle();
-      if (row == null) return [];
-      return row['schedule_json'] as List<dynamic>;
-    } catch (_) {
-      // Retry without specific day to see if there is any timetable at all
-      try {
-        final all = await _db.from(kSchedulesTable).select('day_of_week')
-            .eq('student_id', studentId);
-        return all; // Returns list of available days
-      } catch (__) { return []; }
+      String? resolvedRollNo = rollNo?.trim();
+      if ((resolvedRollNo == null || resolvedRollNo.isEmpty) && studentId.isNotEmpty) {
+        try {
+          final userRow = await _db.from(kUsersTable).select('roll_number').eq('id', studentId).maybeSingle();
+          if (userRow != null && userRow['roll_number'] != null) {
+            resolvedRollNo = userRow['roll_number'].toString().trim();
+          }
+        } catch (_) {}
+      }
+
+      if (resolvedRollNo == null || resolvedRollNo.isEmpty) return [];
+
+      final rows = await _db.from(kSchedulesTable).select()
+          .ilike('student_roll_no', resolvedRollNo)
+          .ilike('day_of_week', day);
+      return rows;
+    } catch (e) {
+      debugPrint('⚠️ getTimetable failed: $e');
+      return [];
     }
   }
 

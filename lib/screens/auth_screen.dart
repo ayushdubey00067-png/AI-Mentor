@@ -32,14 +32,71 @@ class _AuthScreenState extends State<AuthScreen>
   final _rEmailCtrl = TextEditingController();
   final _rPassCtrl = TextEditingController();
   final _rConfCtrl = TextEditingController();
-  final _rProgCtrl = TextEditingController();
-  final _rBranchCtrl = TextEditingController();
-  final _rSemCtrl = TextEditingController();
   final _rRollCtrl = TextEditingController(); // ← student roll no
   final _rMentorCtrl = TextEditingController(); // ← mentor email
   final _regKey = GlobalKey<FormState>();
   bool _hideReg = true;
   bool _hideConf = true;
+
+  // Academic Dropdowns State
+  String? _selectedProgram = 'B.Tech';
+  String? _selectedBranch = 'Computer Science & Engineering';
+  String? _selectedSemester = '5';
+  String? _selectedSection = 'CSE 5A';
+
+  static const List<String> _programs = [
+    'B.Tech',
+    'BCA',
+    'BBA',
+    'B.Sc',
+    'B.Ed',
+    'Law (BA/BBA LLB)',
+    'M.Tech',
+    'M.Sc',
+    'MBA',
+  ];
+
+  static const List<String> _branches = [
+    'Computer Science & Engineering',
+    'CSE (AI & ML)',
+    'CSE (GenAI & Data Science)',
+    'CSE (Full Stack Development)',
+    'CSE (Cyber Security & Threat Intel)',
+    'Robotics & Artificial Intelligence',
+    'Electronics & Communication Engineering',
+    'Mechanical Engineering',
+    'Cloud Computing',
+    'FinTech',
+    'Business Analytics',
+    'General Management',
+    'Law',
+    'Education',
+    'Physics / Chemistry / Forensic',
+  ];
+
+  static const List<String> _semesters = [
+    '1', '2', '3', '4', '5', '6', '7', '8'
+  ];
+
+  static const List<String> _sections = [
+    'CSE 5A', 'CSE 5B', 'CSE 5C', 'CSE 5D',
+    'CSE 1A', 'CSE 1B',
+    'CSE 3A', 'CSE 3B', 'CSE 3C',
+    'CSE 7A', 'CSE 7B', 'CSE 7C',
+    'AIML 1A', 'AIML 1B', 'AIML 1C',
+    'AIML 3A', 'AIML 3B', 'AIML 3C',
+    'AIML 5A', 'AIML 5B',
+    'AIML 7A', 'AIML 7B', 'AIML 7C',
+    'FSD 3', 'FSD 5',
+    'CSTI 1', 'CSTI 3', 'CSTI 5', 'CSTI 7',
+    'B.Tech ECE Sem 1', 'B.Tech ECE SEM 3', 'B.Tech ECE SEM 5', 'B.TECH ECE SEM 7',
+    'B.Tech. GenAI 1', 'B.TECH GenAI 3', 'B.TECH QUANTUM 1',
+    'BCA CC3', 'BCA FINTECH3',
+    'BBA BA SEM I', 'BBA BA SEM III', 'BBA BA SEM V',
+    'B.A B.ED Sem 1', 'B.A B.ED SEM 3', 'B.A B.ED SEM 5', 'B.A B.ED SEM 7',
+    'SoL_BA LLB Semester-I', 'SoL_BA LLB Semester-III', 'SoL_BA LLB Semester-V', 'SoL_BA LLB Semester-VII',
+    'M.TECH. CSE 3',
+  ];
 
   @override
   void initState() {
@@ -64,9 +121,6 @@ class _AuthScreenState extends State<AuthScreen>
       _rEmailCtrl,
       _rPassCtrl,
       _rConfCtrl,
-      _rProgCtrl,
-      _rBranchCtrl,
-      _rSemCtrl,
       _rRollCtrl,
       _rMentorCtrl
     ]) {
@@ -109,6 +163,10 @@ class _AuthScreenState extends State<AuthScreen>
       setState(() => _errorMsg = 'Passwords do not match');
       return;
     }
+    if (_role == 'student' && _rRollCtrl.text.trim().isEmpty) {
+      setState(() => _errorMsg = 'Roll Number is required for students');
+      return;
+    }
     setState(() => _errorMsg = null);
     final auth = context.read<AuthProvider>();
     final error = await auth.register(
@@ -116,9 +174,10 @@ class _AuthScreenState extends State<AuthScreen>
       password: _rPassCtrl.text,
       name: _rNameCtrl.text,
       role: _role,
-      program: _rProgCtrl.text,
-      branch: _rBranchCtrl.text,
-      semester: _rSemCtrl.text,
+      program: _role == 'student' ? _selectedProgram : null,
+      branch: _role == 'student' ? _selectedBranch : null,
+      semester: _role == 'student' ? _selectedSemester : null,
+      section: _role == 'student' ? _selectedSection : null,
       rollNumber: _rRollCtrl.text,
       mentorEmail: _role == 'student' ? _rMentorCtrl.text : null,
     );
@@ -455,7 +514,7 @@ class _AuthScreenState extends State<AuthScreen>
 
             const SizedBox(height: 12),
 
-            // ── Academic Details ─────────────────────────────────────────────────
+            // ── Academic Details (Mandatory) ────────────────────────────────────
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -466,36 +525,80 @@ class _AuthScreenState extends State<AuthScreen>
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Academic Details (optional)',
-                        style: GoogleFonts.lato(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primary)),
+                    Row(
+                      children: [
+                        Text('Academic Details (Mandatory)',
+                            style: GoogleFonts.lato(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppTheme.primary)),
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFEFF6FF),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text('University Verified',
+                              style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF1E40AF))),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                        controller: _rProgCtrl,
-                        textInputAction: TextInputAction.next,
-                        decoration: _deco(
-                            'Program (e.g. B.Tech)', Icons.school_outlined)),
+                    // Program Dropdown
+                    DropdownButtonFormField<String>(
+                      value: _selectedProgram,
+                      decoration: _deco('Program', Icons.school_outlined),
+                      items: _programs.map((p) => DropdownMenuItem(value: p, child: Text(p, style: GoogleFonts.lato(fontSize: 14)))).toList(),
+                      onChanged: (v) => setState(() => _selectedProgram = v),
+                      validator: (v) => v == null || v.isEmpty ? 'Please select your program' : null,
+                    ),
                     const SizedBox(height: 10),
-                    TextFormField(
-                        controller: _rBranchCtrl,
-                        textInputAction: TextInputAction.next,
-                        decoration: _deco('Branch (e.g. Computer Science)',
-                            Icons.account_tree_outlined)),
+                    // Branch Dropdown
+                    DropdownButtonFormField<String>(
+                      value: _selectedBranch,
+                      isExpanded: true,
+                      decoration: _deco('Branch', Icons.account_tree_outlined),
+                      items: _branches.map((b) => DropdownMenuItem(value: b, child: Text(b, style: GoogleFonts.lato(fontSize: 13), overflow: TextOverflow.ellipsis))).toList(),
+                      onChanged: (v) => setState(() => _selectedBranch = v),
+                      validator: (v) => v == null || v.isEmpty ? 'Please select your branch' : null,
+                    ),
                     const SizedBox(height: 10),
-                    TextFormField(
-                        controller: _rSemCtrl,
-                        keyboardType: TextInputType.number,
-                        textInputAction: TextInputAction.next,
-                        decoration: _deco('Semester (e.g. 5)',
-                            Icons.calendar_today_outlined)),
+                    // Semester & Section Row
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedSemester,
+                            decoration: _deco('Semester', Icons.calendar_today_outlined),
+                            items: _semesters.map((s) => DropdownMenuItem(value: s, child: Text('Sem $s', style: GoogleFonts.lato(fontSize: 13)))).toList(),
+                            onChanged: (v) => setState(() => _selectedSemester = v),
+                            validator: (v) => v == null || v.isEmpty ? 'Sem required' : null,
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          flex: 3,
+                          child: DropdownButtonFormField<String>(
+                            value: _selectedSection,
+                            isExpanded: true,
+                            decoration: _deco('Section', Icons.meeting_room_outlined),
+                            items: _sections.map((sec) => DropdownMenuItem(value: sec, child: Text(sec, style: GoogleFonts.lato(fontSize: 13), overflow: TextOverflow.ellipsis))).toList(),
+                            onChanged: (v) => setState(() => _selectedSection = v),
+                            validator: (v) => v == null || v.isEmpty ? 'Section required' : null,
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 10),
+                    // Roll Number
                     TextFormField(
                         controller: _rRollCtrl,
                         textInputAction: TextInputAction.done,
                         onFieldSubmitted: (_) => _register(),
-                        decoration: _deco('Roll Number (e.g. 21BCE102)',
+                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Roll Number is required' : null,
+                        decoration: _deco('Roll Number (e.g. 2K24CSUN01015)',
                             Icons.numbers_outlined)),
                   ]),
             ),

@@ -1,4 +1,8 @@
-# Flutter/Dart
+# ==============================================================================
+# Flutter / Dart .gitignore — Acadly AI EMS
+# ==============================================================================
+
+# 📦 Flutter & Dart Build Artifacts
 .dart_tool/
 .flutter-plugins
 .flutter-plugins-dependencies
@@ -7,10 +11,19 @@
 .pub/
 build/
 *.iml
+.last_build_id
+canvaskit/
 
-# Android
+# 🤖 Agent Framework & Local Tooling
+.codegraph/
+.code-review-graph/
+.agents/
+.qodo/
+skills-lock.json
+
+# 📱 Android Build & Tooling
 **/android/**/gradle-wrapper.jar
-**/android/.gradle
+**/android/.gradle/
 **/android/captures/
 **/android/gradlew
 **/android/gradlew.bat
@@ -20,7 +33,7 @@ build/
 *.jks
 *.keystore
 
-# iOS
+# 🍎 iOS
 **/ios/**/*.mode1v3
 **/ios/**/*.mode2v3
 **/ios/**/*.moved-aside
@@ -37,28 +50,51 @@ build/
 **/ios/Runner/GeneratedPluginRegistrant.*
 **/ios/Pods/
 
-# macOS
+# 💻 macOS / Linux / Windows Ephemeral
 **/macos/Flutter/GeneratedPluginRegistrant.swift
 **/macos/Flutter/ephemeral/
+**/linux/flutter/ephemeral/
+**/windows/flutter/ephemeral/
 
-# IDE
+# 🛠️ IDE & Editor Settings
 .idea/
 .vscode/
-.DS_Store
+.settings/
+**/.settings/
 *.suo
 *.sw?
+*.ipr
+*.iws
 
-# 🔐 ENV & Secrets (VERY IMPORTANT)
+# 🖥️ OS Metadata & Caches
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+[Dd]esktop.ini
+
+# 🔐 ENV & Secrets (STRICT GUARD)
 .env
 .env.*
-!.env.example   # allow example file
+!.env.example
 config.json
+.mcp.json
+*credentials*.json
+*service-account*.json
+*secret*.json
 
-# 🔐 API keys / config
-*.json
+# 🔐 Cryptographic Keys & Certs
 *.pem
 *.p12
 *.key
 
-# Coverage
+# 📊 Test & Logs
 coverage/
+*.log
+flutter_*.log
+
+# ☁️ Supabase CLI Temporary State
+supabase/.temp/

@@ -1,5 +1,6 @@
 // lib/screens/mentor/mentor_ai_chat_screen.dart
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -8,9 +9,12 @@ import '../../services/ai_service.dart';
 import '../../services/auth_provider.dart';
 import '../../services/chat_provider.dart';
 import '../../utils/app_theme.dart';
+import '../../widgets/chat_interactive_options.dart';
+import '../../widgets/typing_dots_indicator.dart';
 
 class _Msg {
-  final String role, content;
+  final String role;
+  String content;
   final DateTime time;
   _Msg({required this.role, required this.content}) : time = DateTime.now();
   bool get isUser => role == 'user';
@@ -153,6 +157,7 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
     });
     _scrollToBottom();
 
+    _Msg? streamingMsg;
     try {
       // Build history (skip first assistant greeting for cleaner context)
       final history = _msgs
@@ -165,9 +170,30 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
         history: history.cast<Map<String, dynamic>>(),
         newMessage: text,
         mentorName: auth.currentUser?.name ?? 'Mentor',
+        onStreamChunk: (partial) {
+          setState(() {
+            if (_isTyping) _isTyping = false;
+            if (streamingMsg == null) {
+              streamingMsg = _Msg(role: 'assistant', content: partial);
+              _msgs.add(streamingMsg!);
+            } else {
+              streamingMsg!.content = partial;
+            }
+          });
+          _scrollToBottom();
+        },
       );
-      setState(() => _msgs.add(_Msg(role: 'assistant', content: reply)));
+      setState(() {
+        if (streamingMsg == null) {
+          _msgs.add(_Msg(role: 'assistant', content: reply));
+        } else {
+          streamingMsg!.content = reply;
+        }
+      });
     } catch (e) {
+      if (streamingMsg != null) {
+        _msgs.remove(streamingMsg);
+      }
       setState(() => _msgs.add(_Msg(
           role: 'assistant', content: AIService.friendlyError(e.toString()))));
     } finally {
@@ -344,23 +370,40 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
                   ? Text(msg.content,
                       style: GoogleFonts.lato(
                           color: Colors.white, fontSize: 14, height: 1.5))
-                  : MarkdownBody(
-                      data: msg.content,
-                      styleSheet: MarkdownStyleSheet(
-                        p: GoogleFonts.lato(
-                            fontSize: 14,
-                            height: 1.6,
-                            color: const Color(0xFF111827)),
-                        strong: GoogleFonts.lato(
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.mentorBubble),
-                        h3: GoogleFonts.lato(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: AppTheme.primary),
-                        listBullet:
-                            GoogleFonts.lato(color: const Color(0xFF111827)),
-                      )),
+                  : Builder(builder: (context) {
+                      final parsed = InteractiveOptionParser.parse(msg.content);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          MarkdownBody(
+                            data: parsed.cleanText,
+                            styleSheet: MarkdownStyleSheet(
+                              p: GoogleFonts.lato(
+                                  fontSize: 14,
+                                  height: 1.6,
+                                  color: const Color(0xFF111827)),
+                              strong: GoogleFonts.lato(
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.mentorBubble),
+                              h3: GoogleFonts.lato(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppTheme.primary),
+                              listBullet: GoogleFonts.lato(
+                                  color: const Color(0xFF111827)),
+                            ),
+                          ),
+                          if (parsed.options.isNotEmpty) ...[
+                            const SizedBox(height: 6),
+                            ChatInteractiveOptionsView(
+                              options: parsed.options,
+                              primaryColor: AppTheme.mentorBubble,
+                              onOptionSelected: (selected) => _send(selected),
+                            ),
+                          ],
+                        ],
+                      );
+                    }),
             ),
           ),
           if (isUser) ...[
@@ -392,34 +435,22 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
                   color: Colors.white, size: 18)),
           const SizedBox(width: 8),
           Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  boxShadow: [
-                    BoxShadow(
-                        color: Colors.black.withOpacity(0.06), blurRadius: 6)
-                  ]),
-              child: Row(children: [
-                _dot(),
-                const SizedBox(width: 4),
-                _dot(),
-                const SizedBox(width: 4),
-                _dot(),
-              ])),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: [
+                  BoxShadow(
+                      color: Colors.black.withOpacity(0.06), blurRadius: 6)
+                ]),
+            child: const TypingDotsIndicator(
+              color: AppTheme.mentorBubble,
+              dotSize: 7.5,
+              spacing: 4.5,
+            ),
+          ),
         ]),
       );
-
-  Widget _dot() => TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 600),
-      curve: Curves.easeInOut,
-      builder: (_, v, __) => Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-              color: AppTheme.mentorBubble.withOpacity(0.4 + v * 0.6),
-              shape: BoxShape.circle)));
 
   Widget _inputArea() => Container(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
@@ -438,19 +469,33 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
                     borderRadius: BorderRadius.circular(22),
                     border: Border.all(
                         color: AppTheme.mentorBubble.withOpacity(0.25))),
-                child: TextField(
-                  controller: _ctrl,
-                  maxLines: 5,
-                  minLines: 1,
-                  textCapitalization: TextCapitalization.sentences,
-                  onSubmitted: (_) => _send(),
-                  decoration: InputDecoration(
-                      hintText: 'Ask about students, policies, drafts...',
-                      hintStyle: GoogleFonts.lato(
-                          color: const Color(0xFF9CA3AF), fontSize: 13),
-                      border: InputBorder.none,
-                      contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 18, vertical: 11)),
+                child: Focus(
+                  onKeyEvent: (node, event) {
+                    if (event is KeyDownEvent &&
+                        event.logicalKey == LogicalKeyboardKey.enter &&
+                        !HardwareKeyboard.instance.isShiftPressed) {
+                      if (!_isTyping) {
+                        _send();
+                      }
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: TextField(
+                    controller: _ctrl,
+                    maxLines: 5,
+                    minLines: 1,
+                    textCapitalization: TextCapitalization.sentences,
+                    textInputAction: TextInputAction.send,
+                    onSubmitted: _isTyping ? null : (_) => _send(),
+                    decoration: InputDecoration(
+                        hintText: 'Ask about students, policies, drafts...',
+                        hintStyle: GoogleFonts.lato(
+                            color: const Color(0xFF9CA3AF), fontSize: 13),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 18, vertical: 11)),
+                  ),
                 ),
               ),
             ),

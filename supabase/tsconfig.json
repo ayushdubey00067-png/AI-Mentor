@@ -1,0 +1,9 @@
+{
+  "compilerOptions": {
+    "allowJs": true,
+    "lib": ["ESNext", "DOM"],
+    "strict": false,
+    "module": "ESNext",
+    "target": "ESNext"
+  }
+}

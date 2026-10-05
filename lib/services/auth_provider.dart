@@ -69,6 +69,7 @@ class AuthProvider extends ChangeNotifier {
     String? program,
     String? branch,
     String? semester,
+    String? section,
     String? mentorEmail,
     String? rollNumber,
     String? department,
@@ -79,7 +80,7 @@ class AuthProvider extends ChangeNotifier {
     try {
       final user = await SupabaseService.register(
         email: email, password: password, name: name, role: role,
-        program: program, branch: branch, semester: semester,
+        program: program, branch: branch, semester: semester, section: section,
         mentorEmail: mentorEmail, rollNumber: rollNumber,
         department: department, designation: designation, phone: phone,
       );
