@@ -17,8 +17,7 @@ import '../../utils/mru_timetable_data.dart';
 class StudentDocumentsScreen extends StatefulWidget {
   const StudentDocumentsScreen({super.key});
   @override
-  State<StudentDocumentsScreen> createState() =>
-      _StudentDocumentsScreenState();
+  State<StudentDocumentsScreen> createState() => _StudentDocumentsScreenState();
 }
 
 class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
@@ -28,15 +27,49 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
   // Academic Session & Term Filter State
   String _selectedAcademicYear = '2026-2027';
   String _selectedTerm = 'odd'; // 'odd' (Jun-Dec) or 'even' (Jan-May)
-  static const List<String> _academicYears = ['2026-2027', '2025-2026', '2024-2025'];
+  static const List<String> _academicYears = [
+    '2026-2027',
+    '2025-2026',
+    '2024-2025'
+  ];
 
   static const List<Map<String, dynamic>> _docTypes = [
-    {'value': 'academic_calendar', 'label': 'Academic Calendar',  'emoji': '🗓️', 'color': Color(0xFF8B5CF6)},
-    {'value': 'syllabus',          'label': 'Syllabus',           'emoji': '📚', 'color': Color(0xFF10B981)},
-    {'value': 'marksheet',         'label': 'Marksheet / Marks',  'emoji': '📊', 'color': Color(0xFFF59E0B)},
-    {'value': 'attendance',        'label': 'Attendance Sheet',   'emoji': '✅', 'color': Color(0xFF06B6D4)},
-    {'value': 'assignment',        'label': 'Assignment',         'emoji': '📝', 'color': Color(0xFFEF4444)},
-    {'value': 'other',             'label': 'Policy / Other',     'emoji': '🏛️', 'color': Color(0xFF6B7280)},
+    {
+      'value': 'academic_calendar',
+      'label': 'Academic Calendar',
+      'emoji': '🗓️',
+      'color': Color(0xFF8B5CF6)
+    },
+    {
+      'value': 'syllabus',
+      'label': 'Syllabus',
+      'emoji': '📚',
+      'color': Color(0xFF10B981)
+    },
+    {
+      'value': 'marksheet',
+      'label': 'Marksheet / Marks',
+      'emoji': '📊',
+      'color': Color(0xFFF59E0B)
+    },
+    {
+      'value': 'attendance',
+      'label': 'Attendance Sheet',
+      'emoji': '✅',
+      'color': Color(0xFF06B6D4)
+    },
+    {
+      'value': 'assignment',
+      'label': 'Assignment',
+      'emoji': '📝',
+      'color': Color(0xFFEF4444)
+    },
+    {
+      'value': 'other',
+      'label': 'Policy / Other',
+      'emoji': '🏛️',
+      'color': Color(0xFF6B7280)
+    },
   ];
 
   @override
@@ -103,9 +136,12 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
   Widget _buildTermFilterBar() {
     final isOdd = _selectedTerm == 'odd';
     final now = DateTime.now();
-    final currentYear = now.month >= 6 ? '${now.year}-${now.year + 1}' : '${now.year - 1}-${now.year}';
+    final currentYear = now.month >= 6
+        ? '${now.year}-${now.year + 1}'
+        : '${now.year - 1}-${now.year}';
     final currentTerm = now.month >= 6 ? 'odd' : 'even';
-    final isCurrentSession = _selectedAcademicYear == currentYear && _selectedTerm == currentTerm;
+    final isCurrentSession =
+        _selectedAcademicYear == currentYear && _selectedTerm == currentTerm;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 14),
@@ -124,41 +160,33 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              const Icon(Icons.filter_list_rounded, size: 18, color: AppTheme.primary),
-              const SizedBox(width: 8),
-              Text(
-                'Academic Session & Term',
-                style: GoogleFonts.lato(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: const Color(0xFF111827),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 380;
+              final activeTermBadge = isCurrentSession
+                  ? Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFECFDF5),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: const Color(0xFFA7F3D0)),
+                      ),
+                      child: Text(
+                        'Active Term',
+                        style: GoogleFonts.lato(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF047857),
+                        ),
+                      ),
+                    )
+                  : const SizedBox.shrink();
+              final yearSelector = Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: isCompact ? 6 : 10,
+                  vertical: 2,
                 ),
-              ),
-              if (isCurrentSession) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECFDF5),
-                    borderRadius: BorderRadius.circular(6),
-                    border: Border.all(color: const Color(0xFFA7F3D0)),
-                  ),
-                  child: Text(
-                    'Active Term',
-                    style: GoogleFonts.lato(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF047857),
-                    ),
-                  ),
-                ),
-              ],
-              const Spacer(),
-              // Year Selector Dropdown
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
                 decoration: BoxDecoration(
                   color: const Color(0xFFF9FAFB),
                   borderRadius: BorderRadius.circular(10),
@@ -168,8 +196,9 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                   child: DropdownButton<String>(
                     value: _selectedAcademicYear,
                     isDense: true,
+                    iconSize: isCompact ? 18 : 24,
                     style: GoogleFonts.lato(
-                      fontSize: 12,
+                      fontSize: isCompact ? 10 : 12,
                       fontWeight: FontWeight.w700,
                       color: const Color(0xFF1F2937),
                     ),
@@ -180,12 +209,48 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                       );
                     }).toList(),
                     onChanged: (val) {
-                      if (val != null) setState(() => _selectedAcademicYear = val);
+                      if (val != null)
+                        setState(() => _selectedAcademicYear = val);
                     },
                   ),
                 ),
-              ),
-            ],
+              );
+              final heading = Row(
+                children: [
+                  if (!isCompact) ...[
+                    const Icon(Icons.filter_list_rounded,
+                        size: 18, color: AppTheme.primary),
+                    const SizedBox(width: 8),
+                  ],
+                  Expanded(
+                    child: Wrap(
+                      alignment: WrapAlignment.start,
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        Text(
+                          'Academic Session & Term',
+                          style: GoogleFonts.lato(
+                            fontSize: isCompact ? 12 : 13,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF111827),
+                          ),
+                        ),
+                        if (isCurrentSession) activeTermBadge,
+                        if (isCompact) yearSelector,
+                      ],
+                    ),
+                  ),
+                  if (!isCompact) ...[
+                    const SizedBox(width: 8),
+                    yearSelector,
+                  ],
+                ],
+              );
+
+              return heading;
+            },
           ),
           const SizedBox(height: 12),
           // Term Switcher (Odd vs Even)
@@ -200,7 +265,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                       color: isOdd ? AppTheme.primary : const Color(0xFFF9FAFB),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: isOdd ? AppTheme.primary : const Color(0xFFE5E7EB),
+                        color:
+                            isOdd ? AppTheme.primary : const Color(0xFFE5E7EB),
                       ),
                     ),
                     child: Center(
@@ -223,10 +289,12 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                   child: Container(
                     padding: const EdgeInsets.symmetric(vertical: 9),
                     decoration: BoxDecoration(
-                      color: !isOdd ? AppTheme.primary : const Color(0xFFF9FAFB),
+                      color:
+                          !isOdd ? AppTheme.primary : const Color(0xFFF9FAFB),
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
-                        color: !isOdd ? AppTheme.primary : const Color(0xFFE5E7EB),
+                        color:
+                            !isOdd ? AppTheme.primary : const Color(0xFFE5E7EB),
                       ),
                     ),
                     child: Center(
@@ -235,7 +303,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                         style: GoogleFonts.lato(
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
-                          color: !isOdd ? Colors.white : const Color(0xFF4B5563),
+                          color:
+                              !isOdd ? Colors.white : const Color(0xFF4B5563),
                         ),
                       ),
                     ),
@@ -259,7 +328,11 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
       program: auth.currentUser!.program,
       branch: auth.currentUser!.branch,
     );
-    if (mounted) setState(() { _docs = docs; _loading = false; });
+    if (mounted)
+      setState(() {
+        _docs = docs;
+        _loading = false;
+      });
   }
 
   @override
@@ -270,20 +343,26 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
         backgroundColor: AppTheme.primary,
         elevation: 0,
         title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('Academic Documents', style: GoogleFonts.playfairDisplay(
-              fontSize: 18, fontWeight: FontWeight.w700, color: Colors.white)),
+          Text('Academic Documents',
+              style: GoogleFonts.playfairDisplay(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white)),
           Text('Mentor-published schedules, syllabus & records',
               style: GoogleFonts.lato(fontSize: 11, color: Colors.white70)),
         ]),
         actions: [
           IconButton(
-            icon: const Icon(Icons.refresh_rounded, color: Colors.white, size: 20),
+            icon: const Icon(Icons.refresh_rounded,
+                color: Colors.white, size: 20),
             onPressed: _loadDocs,
           ),
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.primary)))
+          ? const Center(
+              child: CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation(AppTheme.primary)))
           : _docsList(),
     );
   }
@@ -292,7 +371,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
     final auth = context.watch<AuthProvider>();
     // Filter documents matching the selected academic year and term
     final sessionDocs = _docs.where((doc) {
-      final matchesYear = (doc.academicYear ?? '2026-2027') == _selectedAcademicYear;
+      final matchesYear =
+          (doc.academicYear ?? '2026-2027') == _selectedAcademicYear;
       final matchesTerm = doc.term == _selectedTerm;
       return matchesYear && matchesTerm;
     }).toList();
@@ -317,9 +397,9 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
             padding: const EdgeInsets.all(14),
             margin: const EdgeInsets.only(bottom: 14),
             decoration: BoxDecoration(
-              color: const Color(0xFFEFF6FF),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: const Color(0xFFBFDBFE))),
+                color: const Color(0xFFEFF6FF),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFFBFDBFE))),
             child: Row(children: [
               Container(
                 padding: const EdgeInsets.all(8),
@@ -327,18 +407,26 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                   color: Color(0xFFDBEAFE),
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.verified_user_rounded, color: Color(0xFF2563EB), size: 20),
+                child: const Icon(Icons.verified_user_rounded,
+                    color: Color(0xFF2563EB), size: 20),
               ),
               const SizedBox(width: 12),
-              Expanded(child: Column(
+              Expanded(
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text('Institutional Repository',
-                      style: GoogleFonts.lato(fontSize: 13, fontWeight: FontWeight.w700, color: const Color(0xFF1E40AF))),
+                      style: GoogleFonts.lato(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: const Color(0xFF1E40AF))),
                   const SizedBox(height: 2),
                   Text(
-                    'These materials are officially uploaded and verified by your faculty mentor. Tap any document to open the authentic raw PDF.',
-                    style: GoogleFonts.lato(fontSize: 11, color: const Color(0xFF3B82F6), height: 1.4)),
+                      'These materials are officially uploaded and verified by your faculty mentor. Tap any document to open the authentic raw PDF.',
+                      style: GoogleFonts.lato(
+                          fontSize: 11,
+                          color: const Color(0xFF3B82F6),
+                          height: 1.4)),
                 ],
               )),
             ]),
@@ -356,7 +444,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.folder_open_rounded, size: 48, color: Color(0xFF9CA3AF)),
+                  const Icon(Icons.folder_open_rounded,
+                      size: 48, color: Color(0xFF9CA3AF)),
                   const SizedBox(height: 12),
                   Text(
                     'No Other Documents for $_selectedAcademicYear (${_selectedTerm.toUpperCase()})',
@@ -370,7 +459,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                   Text(
                     'Your mentor has not published additional verified materials (such as syllabus or marksheets) for this session yet.',
                     textAlign: TextAlign.center,
-                    style: GoogleFonts.lato(fontSize: 12, color: const Color(0xFF6B7280)),
+                    style: GoogleFonts.lato(
+                        fontSize: 12, color: const Color(0xFF6B7280)),
                   ),
                 ],
               ),
@@ -383,14 +473,16 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
     );
   }
 
-  Widget _buildTimetableSectionCard(AuthProvider auth, List<StudentDocument> sessionDocs) {
+  Widget _buildTimetableSectionCard(
+      AuthProvider auth, List<StudentDocument> sessionDocs) {
     final studentSection = MRUTimetableRepository.resolveSection(
       program: auth.currentUser?.program,
       branch: auth.currentUser?.branch,
       semester: auth.currentUser?.semester,
       section: auth.currentUser?.section,
     );
-    final mentorName = auth.currentUser?.mentorEmail?.split('@').first ?? 'PRINIMA GUPTA';
+    final mentorName =
+        auth.currentUser?.mentorEmail?.split('@').first ?? 'PRINIMA GUPTA';
     final resolvedTeacher = MRUTimetableRepository.resolveTeacher(mentorName);
 
     final timetableDoc = sessionDocs.firstWhere(
@@ -436,14 +528,18 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                   borderRadius: BorderRadius.circular(12),
                   border: Border.all(color: const Color(0xFFDBEAFE)),
                 ),
-                child: const Icon(Icons.calendar_month_rounded, color: Color(0xFF2563EB), size: 22),
+                child: const Icon(Icons.calendar_month_rounded,
+                    color: Color(0xFF2563EB), size: 22),
               ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
                       children: [
                         Text(
                           'Class & Faculty Timetable',
@@ -453,9 +549,9 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                             color: const Color(0xFF0F172A),
                           ),
                         ),
-                        const SizedBox(width: 8),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2.5),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2.5),
                           decoration: BoxDecoration(
                             color: const Color(0xFFEFF6FF),
                             borderRadius: BorderRadius.circular(6),
@@ -464,7 +560,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.lock_outline_rounded, size: 11, color: Color(0xFF2563EB)),
+                              const Icon(Icons.lock_outline_rounded,
+                                  size: 11, color: Color(0xFF2563EB)),
                               const SizedBox(width: 3),
                               Text(
                                 studentSection,
@@ -475,6 +572,44 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                                 ),
                               ),
                             ],
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            TimetableSyncDialog.show(
+                              context,
+                              targetSection: studentSection,
+                              userRole: 'student',
+                              onSynced: () {
+                                if (mounted) setState(() {});
+                              },
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 7, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF0FDF4),
+                              borderRadius: BorderRadius.circular(7),
+                              border:
+                                  Border.all(color: const Color(0xFFBBF7D0)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.sync_rounded,
+                                    size: 11, color: Color(0xFF16A34A)),
+                                const SizedBox(width: 4),
+                                Text(
+                                  'Sync MRU',
+                                  style: GoogleFonts.lato(
+                                    fontSize: 9,
+                                    fontWeight: FontWeight.w800,
+                                    color: const Color(0xFF15803D),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ],
@@ -488,42 +623,6 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                       ),
                     ),
                   ],
-                ),
-              ),
-              // Live Sync Badge
-              GestureDetector(
-                onTap: () {
-                  TimetableSyncDialog.show(
-                    context,
-                    targetSection: studentSection,
-                    userRole: 'student',
-                    onSynced: () {
-                      if (mounted) setState(() {});
-                    },
-                  );
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF0FDF4),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFFBBF7D0)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.sync_rounded, size: 13, color: Color(0xFF16A34A)),
-                      const SizedBox(width: 5),
-                      Text(
-                        'Sync MRU',
-                        style: GoogleFonts.lato(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: const Color(0xFF15803D),
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ],
@@ -540,15 +639,22 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
           const SizedBox(height: 16),
 
           // Two Distinct Clickable Buttons (Student vs Teacher Timetable)
-          Row(
-            children: [
-              Expanded(
-                child: ElevatedButton.icon(
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final isCompact = constraints.maxWidth < 380;
+              final studentButton = Tooltip(
+                message: 'Open student timetable',
+                child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0F172A),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isCompact ? 4 : 12,
+                      vertical: isCompact ? 9 : 13,
+                    ),
+                    minimumSize: Size(0, isCompact ? 40 : 48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     elevation: 0,
                   ),
                   onPressed: () => TimetableViewerDialog.show(
@@ -559,24 +665,49 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                     document: timetableDoc,
                     userRole: 'student',
                   ),
-                  icon: const Icon(Icons.school_rounded, size: 16),
-                  label: Text(
-                    'Student Timetable ($studentSection)',
-                    style: GoogleFonts.lato(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: isCompact
+                      ? Text(
+                          'Student Timetable',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: GoogleFonts.lato(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.school_rounded, size: 16),
+                            const SizedBox(width: 8),
+                            Flexible(
+                              child: Text(
+                                'Student Timetable ($studentSection)',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: GoogleFonts.lato(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: ElevatedButton.icon(
+              );
+              final teacherButton = Tooltip(
+                message: 'Open teacher timetable',
+                child: ElevatedButton(
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF0284C7),
                     foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 13),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                    padding: EdgeInsets.symmetric(
+                      horizontal: isCompact ? 4 : 12,
+                      vertical: isCompact ? 9 : 13,
+                    ),
+                    minimumSize: Size(0, isCompact ? 40 : 48),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(8)),
                     elevation: 0,
                   ),
                   onPressed: () => TeacherSelectorDialog.showAndOpenViewer(
@@ -586,17 +717,42 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                     document: timetableDoc,
                     userRole: 'student',
                   ),
-                  icon: const Icon(Icons.person_search_rounded, size: 16),
-                  label: Text(
-                    'Teacher Timetable 🔍',
-                    style: GoogleFonts.lato(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
+                  child: isCompact
+                      ? Text(
+                          'Teacher Timetable',
+                          maxLines: 1,
+                          softWrap: false,
+                          style: GoogleFonts.lato(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        )
+                      : Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.person_search_rounded, size: 16),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Teacher Timetable',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ],
+                        ),
                 ),
-              ),
-            ],
+              );
+              return Row(
+                children: [
+                  Expanded(child: studentButton),
+                  SizedBox(width: isCompact ? 6 : 10),
+                  Expanded(child: teacherButton),
+                ],
+              );
+            },
           ),
         ],
       ),
@@ -611,20 +767,20 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
 
     final widgets = <Widget>[];
     for (final entry in grouped.entries) {
-      final ti = _docTypes.firstWhere(
-          (t) => t['value'] == entry.key,
+      final ti = _docTypes.firstWhere((t) => t['value'] == entry.key,
           orElse: () => _docTypes.last);
       widgets.add(Padding(
         padding: const EdgeInsets.only(top: 8, bottom: 8),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
           decoration: BoxDecoration(
-            color: (ti['color'] as Color).withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20)),
-          child: Text(
-            '${ti['emoji']} ${ti['label']} (${entry.value.length})',
-            style: GoogleFonts.lato(fontSize: 13,
-                fontWeight: FontWeight.w700, color: ti['color'] as Color)),
+              color: (ti['color'] as Color).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(20)),
+          child: Text('${ti['emoji']} ${ti['label']} (${entry.value.length})',
+              style: GoogleFonts.lato(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: ti['color'] as Color)),
         ),
       ));
       for (final doc in entry.value) {
@@ -671,15 +827,18 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
             padding: const EdgeInsets.all(14),
             child: Row(children: [
               Container(
-                width: 50, height: 50,
+                width: 50,
+                height: 50,
                 decoration: BoxDecoration(
                     color: color.withOpacity(0.1),
                     borderRadius: BorderRadius.circular(12)),
-                child: Center(child: Text(ti['emoji'] as String,
-                    style: const TextStyle(fontSize: 22))),
+                child: Center(
+                    child: Text(ti['emoji'] as String,
+                        style: const TextStyle(fontSize: 22))),
               ),
               const SizedBox(width: 12),
-              Expanded(child: Column(
+              Expanded(
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Row(children: [
@@ -692,7 +851,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                     ),
                     if (doc.targetScope == 'class')
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFFF3F4F6),
                           borderRadius: BorderRadius.circular(6),
@@ -705,7 +865,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                       )
                     else if (doc.targetRollNo != null)
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFFFEF3C7),
                           borderRadius: BorderRadius.circular(6),
@@ -725,33 +886,39 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                   const SizedBox(height: 6),
                   Row(children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 3),
                       decoration: BoxDecoration(
-                        color: indexed
-                            ? const Color(0xFFF0FDF4)
-                            : const Color(0xFFFFF7ED),
-                        borderRadius: BorderRadius.circular(8)),
+                          color: indexed
+                              ? const Color(0xFFF0FDF4)
+                              : const Color(0xFFFFF7ED),
+                          borderRadius: BorderRadius.circular(8)),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
                         Icon(
-                          indexed ? Icons.check_circle_rounded : Icons.info_outline_rounded,
+                          indexed
+                              ? Icons.check_circle_rounded
+                              : Icons.info_outline_rounded,
                           size: 11,
-                          color: indexed ? const Color(0xFF16A34A) : const Color(0xFFD97706),
+                          color: indexed
+                              ? const Color(0xFF16A34A)
+                              : const Color(0xFFD97706),
                         ),
                         const SizedBox(width: 4),
-                        Text(
-                          indexed ? 'AI Active' : 'Indexed',
-                          style: GoogleFonts.lato(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
-                              color: indexed
-                                  ? const Color(0xFF16A34A)
-                                  : const Color(0xFFD97706))),
+                        Text(indexed ? 'AI Active' : 'Indexed',
+                            style: GoogleFonts.lato(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: indexed
+                                    ? const Color(0xFF16A34A)
+                                    : const Color(0xFFD97706))),
                       ]),
                     ),
                     const SizedBox(width: 8),
-                    Text(DateFormat('MMM d, yyyy').format(doc.createdAt.toLocal()),
-                        style: GoogleFonts.lato(fontSize: 11,
-                            color: const Color(0xFF9CA3AF))),
+                    Text(
+                        DateFormat('MMM d, yyyy')
+                            .format(doc.createdAt.toLocal()),
+                        style: GoogleFonts.lato(
+                            fontSize: 11, color: const Color(0xFF9CA3AF))),
                   ]),
                 ],
               )),
@@ -759,7 +926,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.description_outlined, size: 20, color: Color(0xFF6B7280)),
+                    icon: const Icon(Icons.description_outlined,
+                        size: 20, color: Color(0xFF6B7280)),
                     tooltip: 'View Document Details',
                     onPressed: () {
                       if (doc.docType == 'timetable') {
@@ -774,7 +942,8 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                       }
                     },
                   ),
-                  const Icon(Icons.open_in_new_rounded, color: AppTheme.primary, size: 20),
+                  const Icon(Icons.open_in_new_rounded,
+                      color: AppTheme.primary, size: 20),
                 ],
               ),
             ]),
