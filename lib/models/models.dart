@@ -4,7 +4,7 @@ class UserModel {
   final String id;
   final String email;
   final String name;
-  final String role;
+  final String role; // 'admin', 'mentor', 'student'
   final String? program;
   final String? branch;
   final String? semester;
@@ -21,6 +21,27 @@ class UserModel {
   final String? officeLocation;
   final String? officeHours;
   final String? profileUrl;
+  
+  // Rich Student Directory Fields
+  final String? officialEmail;
+  final String? personalEmail;
+  final String? mobileNo;
+  final String? gender;
+  final String? fatherName;
+  final String? fatherMobile;
+  final String? motherName;
+  final String? motherMobile;
+  final String? studentClass;
+  final String? domicileState;
+  final String? pincode;
+  final String? applicationNo;
+  final String? admissionDate;
+  final String? status;
+  final String? assignedClass; // for mentors e.g. 'CSE 4A'
+  final String? baseSemester;
+  final String? baseYear;
+  final String? passwordHash;
+
   final DateTime createdAt;
   final DateTime lastActive;
 
@@ -45,27 +66,50 @@ class UserModel {
     this.officeLocation,
     this.officeHours,
     this.profileUrl,
+    this.officialEmail,
+    this.personalEmail,
+    this.mobileNo,
+    this.gender,
+    this.fatherName,
+    this.fatherMobile,
+    this.motherName,
+    this.motherMobile,
+    this.studentClass,
+    this.domicileState,
+    this.pincode,
+    this.applicationNo,
+    this.admissionDate,
+    this.status,
+    this.assignedClass,
+    this.baseSemester,
+    this.baseYear,
+    this.passwordHash,
     required this.createdAt,
     required this.lastActive,
   });
 
+  bool get isAdmin => role == 'admin';
   bool get isMentor => role == 'mentor';
   bool get isStudent => role == 'student';
 
   factory UserModel.fromMap(Map<String, dynamic> map) {
     final role = map['role'] ?? 'student';
+    final rawName = map['full_name'] ?? map['name'] ?? '';
+    final rawEmail = map['official_email'] ?? map['email'] ?? '';
+    final rawPhone = map['mobile_no'] ?? map['phone'];
+
     return UserModel(
       id: map['id'] ?? '',
-      email: map['email'] ?? '',
-      name: map['name'] ?? '',
+      email: rawEmail,
+      name: rawName,
       role: role,
       program: map['program'],
       branch: map['branch'],
-      semester: map['semester'],
-      section: map['section'] ?? (role == 'student' ? 'CSE 5A' : null),
+      semester: map['semester']?.toString(),
+      section: map['section'] ?? (role == 'student' ? 'A' : null),
       mentorEmail: map['mentor_email'],
       rollNumber: map['roll_number'],
-      phone: map['phone'],
+      phone: rawPhone,
       department: map['department'],
       skills: map['skills'] != null ? List<String>.from(map['skills']) : null,
       hobbies: map['hobbies'] != null ? List<String>.from(map['hobbies']) : null,
@@ -75,6 +119,24 @@ class UserModel {
       officeLocation: map['office_location'],
       officeHours: map['office_hours'],
       profileUrl: map['profile_url'],
+      officialEmail: map['official_email'] ?? (role == 'student' ? rawEmail : null),
+      personalEmail: map['personal_email'],
+      mobileNo: rawPhone,
+      gender: map['gender'],
+      fatherName: map['father_name'],
+      fatherMobile: map['father_mobile'],
+      motherName: map['mother_name'],
+      motherMobile: map['mother_mobile'],
+      studentClass: map['student_class'],
+      domicileState: map['domicile_state'],
+      pincode: map['pincode']?.toString(),
+      applicationNo: map['application_no'],
+      admissionDate: map['admission_date'],
+      status: map['status'] ?? 'active',
+      assignedClass: map['assigned_class'],
+      baseSemester: map['base_semester']?.toString(),
+      baseYear: map['base_year'],
+      passwordHash: map['password_hash'],
       createdAt: DateTime.parse(map['created_at'] ?? DateTime.now().toIso8601String()),
       lastActive: DateTime.parse(map['last_active'] ?? DateTime.now().toIso8601String()),
     );
@@ -102,11 +164,29 @@ class UserModel {
       'office_location': officeLocation,
       'office_hours': officeHours,
       'profile_url': profileUrl,
+      'official_email': officialEmail,
+      'personal_email': personalEmail,
+      'mobile_no': mobileNo,
+      'gender': gender,
+      'father_name': fatherName,
+      'father_mobile': fatherMobile,
+      'mother_name': motherName,
+      'mother_mobile': motherMobile,
+      'student_class': studentClass,
+      'domicile_state': domicileState,
+      'pincode': pincode,
+      'application_no': applicationNo,
+      'admission_date': admissionDate,
+      'status': status,
+      'assigned_class': assignedClass,
+      'base_semester': baseSemester,
+      'base_year': baseYear,
       'created_at': createdAt.toIso8601String(),
       'last_active': lastActive.toIso8601String(),
     };
   }
 }
+
 
 class ConversationModel {
   final String id;
@@ -593,4 +673,245 @@ class StudentProgressReport {
   }
 
   int get openIssues => issues.where((i) => i.isOpen).length;
+}
+
+// ══════════════════════════════════════════════════════════
+// ATTENDANCE & MULTI-SEMESTER MODELS
+// ══════════════════════════════════════════════════════════
+
+class AttendanceRecord {
+  final String id;
+  final String studentRollNo;
+  final String semester;
+  final String subjectCode;
+  final String subjectName;
+  final String courseType;
+  final String? facultyName;
+  final double attendancePercentage;
+  final int totalClasses;
+  final int attendedClasses;
+  final String monitoringCycle;
+  final String academicYear;
+  final String? lastUpdatedBy;
+  final DateTime lastUpdated;
+
+  AttendanceRecord({
+    required this.id,
+    required this.studentRollNo,
+    required this.semester,
+    required this.subjectCode,
+    required this.subjectName,
+    this.courseType = 'CORE',
+    this.facultyName,
+    required this.attendancePercentage,
+    this.totalClasses = 0,
+    this.attendedClasses = 0,
+    this.monitoringCycle = 'SECOND MONITORING',
+    this.academicYear = '2025-2026',
+    this.lastUpdatedBy,
+    required this.lastUpdated,
+  });
+
+  bool get isDefaulter => attendancePercentage < 75.0;
+
+  factory AttendanceRecord.fromMap(Map<String, dynamic> map) {
+    return AttendanceRecord(
+      id: map['id'] ?? '',
+      studentRollNo: map['student_roll_no'] ?? '',
+      semester: map['semester']?.toString() ?? '5',
+      subjectCode: map['subject_code'] ?? '',
+      subjectName: map['subject_name'] ?? '',
+      courseType: map['course_type'] ?? 'CORE',
+      facultyName: map['faculty_name'],
+      attendancePercentage: (map['attendance_percentage'] != null)
+          ? double.tryParse(map['attendance_percentage'].toString()) ?? 0.0
+          : 0.0,
+      totalClasses: map['total_classes'] ?? 0,
+      attendedClasses: map['attended_classes'] ?? 0,
+      monitoringCycle: map['monitoring_cycle'] ?? 'SECOND MONITORING',
+      academicYear: map['academic_year'] ?? '2025-2026',
+      lastUpdatedBy: map['last_updated_by'],
+      lastUpdated: DateTime.parse(map['last_updated'] ?? DateTime.now().toIso8601String()),
+    );
+  }
+
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'student_roll_no': studentRollNo,
+      'semester': semester,
+      'subject_code': subjectCode,
+      'subject_name': subjectName,
+      'course_type': courseType,
+      'faculty_name': facultyName,
+      'attendance_percentage': attendancePercentage,
+      'total_classes': totalClasses,
+      'attended_classes': attendedClasses,
+      'monitoring_cycle': monitoringCycle,
+      'academic_year': academicYear,
+      'last_updated_by': lastUpdatedBy,
+      'last_updated': lastUpdated.toIso8601String(),
+    };
+  }
+}
+
+class StudentAttendanceSummary {
+  final String id;
+  final String studentRollNo;
+  final String semester;
+  final String monitoringCycle;
+  final double overallPercentage;
+  final int defaulterSubjectCount;
+  final bool isCritical;
+  final DateTime lastUpdated;
+
+  StudentAttendanceSummary({
+    required this.id,
+    required this.studentRollNo,
+    required this.semester,
+    required this.monitoringCycle,
+    required this.overallPercentage,
+    this.defaulterSubjectCount = 0,
+    this.isCritical = false,
+    required this.lastUpdated,
+  });
+
+  factory StudentAttendanceSummary.fromMap(Map<String, dynamic> map) {
+    return StudentAttendanceSummary(
+      id: map['id'] ?? '',
+      studentRollNo: map['student_roll_no'] ?? '',
+      semester: map['semester']?.toString() ?? '5',
+      monitoringCycle: map['monitoring_cycle'] ?? 'SECOND MONITORING',
+      overallPercentage: (map['overall_percentage'] != null)
+          ? double.tryParse(map['overall_percentage'].toString()) ?? 0.0
+          : 0.0,
+      defaulterSubjectCount: map['defaulter_subject_cnt'] ?? 0,
+      isCritical: map['is_critical'] ?? false,
+      lastUpdated: DateTime.parse(map['last_updated'] ?? DateTime.now().toIso8601String()),
+    );
+  }
+}
+
+class AttendanceReportModel {
+  final String id;
+  final String className;
+  final String section;
+  final String semester;
+  final String? department;
+  final String? branch;
+  final String cycleName;
+  final String? dateRange;
+  final double minCriteria;
+  final String uploadedBy;
+  final int totalStudents;
+  final int criticalCount;
+  final DateTime createdAt;
+
+  AttendanceReportModel({
+    required this.id,
+    required this.className,
+    required this.section,
+    required this.semester,
+    this.department,
+    this.branch,
+    required this.cycleName,
+    this.dateRange,
+    this.minCriteria = 75.0,
+    required this.uploadedBy,
+    this.totalStudents = 0,
+    this.criticalCount = 0,
+    required this.createdAt,
+  });
+
+  factory AttendanceReportModel.fromMap(Map<String, dynamic> map) {
+    return AttendanceReportModel(
+      id: map['id'] ?? '',
+      className: map['class_name'] ?? '',
+      section: map['section'] ?? 'A',
+      semester: map['semester']?.toString() ?? '5',
+      department: map['department'],
+      branch: map['branch'],
+      cycleName: map['cycle_name'] ?? '',
+      dateRange: map['date_range'],
+      minCriteria: (map['min_criteria'] != null)
+          ? double.tryParse(map['min_criteria'].toString()) ?? 75.0
+          : 75.0,
+      uploadedBy: map['uploaded_by'] ?? '',
+      totalStudents: map['total_students'] ?? 0,
+      criticalCount: map['critical_count'] ?? 0,
+      createdAt: DateTime.parse(map['created_at'] ?? DateTime.now().toIso8601String()),
+    );
+  }
+}
+
+class SubjectColumnInfo {
+  final String subjectName;
+  final String subjectCode;
+  final String courseType;
+  final String facultyName;
+  final int colIndex;
+
+  SubjectColumnInfo({
+    required this.subjectName,
+    required this.subjectCode,
+    required this.courseType,
+    required this.facultyName,
+    required this.colIndex,
+  });
+}
+
+class StudentAttendanceRow {
+  final int srNo;
+  final String rollNo;
+  final String studentName;
+  final Map<String, double?> subjectPercentages; // Key: subjectCode -> percentage (or null if not enrolled)
+  final double overallPercentage;
+  final int defaulterCount;
+  final bool isCritical;
+
+  StudentAttendanceRow({
+    required this.srNo,
+    required this.rollNo,
+    required this.studentName,
+    required this.subjectPercentages,
+    required this.overallPercentage,
+    required this.defaulterCount,
+    required this.isCritical,
+  });
+}
+
+class ParsedAttendanceReport {
+  final String branch;
+  final String department;
+  final String className;
+  final String section;
+  final String semester;
+  final String cycleName;
+  final String dateRange;
+  final double minCriteria;
+  final String programCoordinator;
+  final List<SubjectColumnInfo> subjects;
+  final List<StudentAttendanceRow> studentRows;
+  final int totalStudents;
+  final int criticalCount;
+  final bool isFormatValid;
+  final String? validationError;
+
+  ParsedAttendanceReport({
+    required this.branch,
+    required this.department,
+    required this.className,
+    required this.section,
+    required this.semester,
+    required this.cycleName,
+    required this.dateRange,
+    required this.minCriteria,
+    required this.programCoordinator,
+    required this.subjects,
+    required this.studentRows,
+    required this.totalStudents,
+    required this.criticalCount,
+    this.isFormatValid = true,
+    this.validationError,
+  });
 }

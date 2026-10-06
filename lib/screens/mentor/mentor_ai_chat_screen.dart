@@ -170,6 +170,9 @@ class _MentorAiChatScreenState extends State<MentorAiChatScreen> {
         history: history.cast<Map<String, dynamic>>(),
         newMessage: text,
         mentorName: auth.currentUser?.name ?? 'Mentor',
+        mentorEmail: auth.currentUser?.email,
+        mentorId: auth.currentUser?.id,
+        assignedClass: auth.currentUser?.assignedClass,
         onStreamChunk: (partial) {
           setState(() {
             if (_isTyping) _isTyping = false;

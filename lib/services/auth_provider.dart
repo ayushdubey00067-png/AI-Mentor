@@ -13,6 +13,7 @@ class AuthProvider extends ChangeNotifier {
   UserModel? get currentUser    => _currentUser;
   bool get isLoading            => _isLoading;
   bool get isLoggedIn           => _currentUser != null;
+  bool get isAdmin              => _currentUser?.isAdmin   ?? false;
   bool get isMentor             => _currentUser?.isMentor  ?? false;
   bool get isStudent            => _currentUser?.isStudent ?? false;
   bool get sessionChecked       => _sessionChecked;

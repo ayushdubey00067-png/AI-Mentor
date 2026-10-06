@@ -520,9 +520,10 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
-                padding: const EdgeInsets.all(10),
+                padding: const EdgeInsets.all(9),
                 decoration: BoxDecoration(
                   color: const Color(0xFFEFF6FF),
                   borderRadius: BorderRadius.circular(12),
@@ -531,7 +532,7 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                 child: const Icon(Icons.calendar_month_rounded,
                     color: Color(0xFF2563EB), size: 22),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -544,7 +545,7 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                         Text(
                           'Class & Faculty Timetable',
                           style: GoogleFonts.lato(
-                            fontSize: 16,
+                            fontSize: 14.5,
                             fontWeight: FontWeight.w800,
                             color: const Color(0xFF0F172A),
                           ),
@@ -566,7 +567,7 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                               Text(
                                 studentSection,
                                 style: GoogleFonts.lato(
-                                  fontSize: 11,
+                                  fontSize: 10.5,
                                   fontWeight: FontWeight.w800,
                                   color: const Color(0xFF1D4ED8),
                                 ),
@@ -614,11 +615,11 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 3),
                     Text(
                       'Manav Rachna University | Odd Term 2026-2027',
                       style: GoogleFonts.lato(
-                        fontSize: 11.5,
+                        fontSize: 11,
                         color: const Color(0xFF64748B),
                       ),
                     ),
@@ -631,12 +632,12 @@ class _StudentDocumentsScreenState extends State<StudentDocumentsScreen> {
           Text(
             'Official lecture hours, 100-min lab allocations, faculty details, and classroom assignments verified from mru.edupage.org • Last Synced: ${MRUTimetableRepository.getSectionLastSyncedFormatted(studentSection)}',
             style: GoogleFonts.lato(
-              fontSize: 12,
+              fontSize: 11.5,
               color: const Color(0xFF64748B),
-              height: 1.4,
+              height: 1.35,
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           // Two Distinct Clickable Buttons (Student vs Teacher Timetable)
           LayoutBuilder(

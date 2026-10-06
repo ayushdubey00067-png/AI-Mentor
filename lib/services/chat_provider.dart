@@ -351,89 +351,117 @@ class ChatProvider extends ChangeNotifier {
       } catch (e) {
         debugPrint('⚠️ RAG embedding/search failed: $e');
       }
-      if (lowerMsg.contains('marks') ||
-          lowerMsg.contains('result') ||
-          lowerMsg.contains('score') ||
-          lowerMsg.contains('grade') ||
-          lowerMsg.contains('sgpa') ||
-          lowerMsg.contains('attendance')) {
-        final rollNo = _currentConversation?.studentRollNo ?? _currentUser?.rollNumber;
+      // 3d. Always Retrieve Official Student Attendance, Examination Marks & Native Records
+      final studentRoll = (_currentUser?.rollNumber != null && _currentUser!.rollNumber!.isNotEmpty)
+          ? _currentUser!.rollNumber!
+          : (_currentConversation?.studentRollNo ?? '');
+      final studentSem = (_currentUser?.semester != null && _currentUser!.semester!.isNotEmpty)
+          ? _currentUser!.semester!
+          : (_currentConversation?.studentSemester ?? '5');
+      final studentName = _currentUser?.name ?? _currentConversation?.studentName ?? 'Student';
+      final studentProgram = _currentUser?.program ?? _currentConversation?.studentProgram ?? 'B.Tech';
+      final studentBranch = _currentUser?.branch ?? _currentConversation?.studentBranch ?? 'Computer Science';
+      final studentSection = MRUTimetableRepository.resolveSection(
+        program: studentProgram,
+        branch: studentBranch,
+        semester: studentSem,
+        section: _currentUser?.section,
+      );
 
+      if (studentRoll.isNotEmpty) {
         // 1. Structured Native JSON lookup from institutional marksheets & registers
-        if (rollNo != null && rollNo.isNotEmpty) {
-          try {
-            final docs = await SupabaseService.getStudentAccessibleDocuments(
-              studentId: studentId,
-              rollNo: rollNo,
-            );
-            for (final doc in docs) {
-              final fullDoc = await SupabaseService.getDocumentWithContent(doc.id);
-              final extJson = fullDoc?.extractedJson ?? doc.extractedJson;
-              if (extJson != null && extJson.isNotEmpty) {
-                for (final pageKey in extJson.keys.where((k) => k.startsWith('page_'))) {
-                  final pageData = extJson[pageKey] as Map<String, dynamic>? ?? {};
-                  final students = (pageData['students'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
-                  for (final s in students) {
-                    final sRoll = (s['roll_no'] as String? ?? '').trim().toLowerCase();
-                    final sName = (s['name'] as String? ?? '').trim().toLowerCase();
-                    final currentName = (_currentUser?.name ?? '').trim().toLowerCase();
+        try {
+          final docs = await SupabaseService.getStudentAccessibleDocuments(
+            studentId: studentId,
+            rollNo: studentRoll,
+          );
+          for (final doc in docs) {
+            final fullDoc = await SupabaseService.getDocumentWithContent(doc.id);
+            final extJson = fullDoc?.extractedJson ?? doc.extractedJson;
+            if (extJson != null && extJson.isNotEmpty) {
+              for (final pageKey in extJson.keys.where((k) => k.startsWith('page_'))) {
+                final pageData = extJson[pageKey] as Map<String, dynamic>? ?? {};
+                final students = (pageData['students'] as List?)?.map((e) => Map<String, dynamic>.from(e as Map)).toList() ?? [];
+                for (final s in students) {
+                  final sRoll = (s['roll_no'] as String? ?? '').trim().toLowerCase();
+                  final sName = (s['name'] as String? ?? '').trim().toLowerCase();
+                  final currentName = studentName.trim().toLowerCase();
 
-                    if (sRoll.contains(rollNo.trim().toLowerCase()) ||
-                        rollNo.trim().toLowerCase().contains(sRoll) ||
-                        (currentName.isNotEmpty && sName.contains(currentName))) {
-                      final grades = (s['grades'] as Map?)?.entries.map((e) => '${e.key}: ${e.value}').join(', ') ?? '';
-                      ragContext += '\n[OFFICIAL INSTITUTIONAL EXAMINATION RECORD FROM NATIVE JSON]:\n'
-                          '- Roll Number: ${s['roll_no']}\n'
-                          '- Student Name: ${s['name']}\n'
-                          '- SGPA: ${s['sgpa']}\n'
-                          '- Subject Grades: $grades\n'
-                          '[END OF INSTITUTIONAL RECORD]\n';
-                    }
+                  if (sRoll.contains(studentRoll.trim().toLowerCase()) ||
+                      studentRoll.trim().toLowerCase().contains(sRoll) ||
+                      (currentName.isNotEmpty && sName.contains(currentName))) {
+                    final grades = (s['grades'] as Map?)?.entries.map((e) => '${e.key}: ${e.value}').join(', ') ?? '';
+                    ragContext += '\n[OFFICIAL INSTITUTIONAL EXAMINATION RECORD FROM NATIVE JSON]:\n'
+                        '- Roll Number: ${s['roll_no']}\n'
+                        '- Student Name: ${s['name']}\n'
+                        '- SGPA: ${s['sgpa']}\n'
+                        '- Subject Grades: $grades\n'
+                        '[END OF INSTITUTIONAL RECORD]\n';
                   }
                 }
               }
             }
-          } catch (_) {}
+          }
+        } catch (_) {}
+
+        // 2. Relational database lookup (attendance & student_attendance_summary)
+        try {
+          var attRecords = await SupabaseService.getStudentAttendanceRecords(
+            studentRoll,
+            semester: studentSem,
+          );
+          // Fallback if semester filter yields empty
+          if (attRecords.isEmpty) {
+            attRecords = await SupabaseService.getStudentAttendanceRecords(studentRoll);
+          }
+
+          var attSummary = await SupabaseService.getStudentAttendanceSummary(
+            studentRoll,
+            semester: studentSem,
+          );
+          // Fallback if semester filter yields null
+          attSummary ??= await SupabaseService.getStudentAttendanceSummary(studentRoll);
+
+          if (attRecords.isNotEmpty || attSummary != null) {
+            ragContext += '\n[OFFICIAL INSTITUTIONAL ATTENDANCE REPORT (STUDENT: ${studentName.toUpperCase()}, ROLL NO: $studentRoll)]:\n';
+            if (attSummary != null) {
+              ragContext += '• Overall Attendance: ${attSummary.overallPercentage.toStringAsFixed(2)}% (Criteria: >=75.0% Mandatory)\n';
+              ragContext += '• Defaulter Subjects Count: ${attSummary.defaulterSubjectCount}\n';
+              ragContext += '• Eligibility Status: ${attSummary.isCritical ? "⚠️ CRITICAL SHORTAGE (<75% overall / multi-subject shortage)" : "✅ Eligible / Good Standing (>=75%)"}\n';
+              ragContext += '• Monitoring Cycle: ${attSummary.monitoringCycle}\n';
+            }
+            if (attRecords.isNotEmpty) {
+              ragContext += '\n| Subject Code | Subject Name | Type | Faculty | Attendance % | Status |\n';
+              ragContext += '| :--- | :--- | :--- | :--- | :---: | :--- |\n';
+              for (final r in attRecords) {
+                final statusStr = r.isDefaulter ? "⚠️ DEFAULTER (<75%)" : "Eligible";
+                ragContext += '| ${r.subjectCode} | ${r.subjectName} | ${r.courseType} | ${r.facultyName ?? "Faculty"} | ${r.attendancePercentage.toStringAsFixed(2)}% | $statusStr |\n';
+              }
+            }
+            ragContext += '[END OFFICIAL ATTENDANCE REPORT]\n';
+          }
+        } catch (e) {
+          debugPrint('⚠️ Student attendance lookup error: $e');
         }
 
-        // 2. Relational database lookup (attendance & academic_results)
-        final records = await SupabaseService.getAcademicRecord(studentId,
-            rollNo: _currentConversation?.studentRollNo);
-        if (records.isNotEmpty) {
-          final attendance =
-              records.where((r) => r['record_type'] == 'attendance').toList();
-          final results =
-              records.where((r) => r['record_type'] == 'result').toList();
-
-          if (attendance.isNotEmpty) {
-            ragContext += '\n\n[OFFICIAL ATTENDANCE RECORDS]:\n';
-            for (var r in attendance) {
-              final sub =
-                  r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
-              final att = r['attendance_percentage'] ?? 'N/A';
-              ragContext +=
-                  '- $sub: $att% attendance (Status: ${r['status'] ?? 'N/A'})\n';
-              if (r['total_classes'] != null) {
-                ragContext +=
-                    '  [Details: ${r['attended_classes']}/${r['total_classes']} classes]\n';
+        // 3. Official marks & results
+        try {
+          final records = await SupabaseService.getAcademicRecord(studentId, rollNo: studentRoll);
+          if (records.isNotEmpty) {
+            final results = records.where((r) => r['record_type'] == 'result').toList();
+            if (results.isNotEmpty) {
+              ragContext += '\n\n[OFFICIAL ACADEMIC RESULTS/MARKS]:\n';
+              for (var r in results) {
+                final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
+                final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
+                final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
+                final grade = r['grade'] ?? 'N/A';
+                final exam = r['exam_type'] ?? 'Examination';
+                ragContext += '- $sub ($exam): Marks $marks/$total, Grade: $grade\n';
               }
             }
           }
-
-          if (results.isNotEmpty) {
-            ragContext += '\n\n[OFFICIAL ACADEMIC RESULTS/MARKS]:\n';
-            for (var r in results) {
-              final sub =
-                  r['subject_name'] ?? r['subject_code'] ?? 'Unknown Subject';
-              final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
-              final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
-              final grade = r['grade'] ?? 'N/A';
-              final exam = r['exam_type'] ?? 'Examination';
-              ragContext +=
-                  '- $sub ($exam): Marks $marks/$total, Grade: $grade\n';
-            }
-          }
-        }
+        } catch (_) {}
       }
 
       // 4. Send to Gemini with RAG context and stream token chunks
@@ -441,15 +469,15 @@ class ChatProvider extends ChangeNotifier {
       final aiText = await AIService.sendStudentMessage(
         history: _messages.where((m) => m.id != streamingMsg?.id).toList(),
         newMessage: content.trim(),
-        studentName: _currentConversation!.studentName ?? _currentUser?.name,
-        rollNo: _currentConversation!.studentRollNo,
-        dept: _currentConversation!.studentDept,
-        program: _currentConversation!.studentProgram,
-        branch: _currentConversation!.studentBranch,
-        semester: _currentConversation!.studentSemester,
-        section: _currentUser?.section ?? 'CSE 5A',
-        skills: _currentConversation!.studentSkills,
-        interests: _currentConversation!.studentInterests,
+        studentName: studentName,
+        rollNo: studentRoll.isNotEmpty ? studentRoll : null,
+        dept: _currentUser?.department ?? _currentConversation?.studentDept,
+        program: studentProgram,
+        branch: studentBranch,
+        semester: studentSem,
+        section: studentSection,
+        skills: _currentUser?.skills ?? _currentConversation?.studentSkills,
+        interests: _currentUser?.careerInterests ?? _currentConversation?.studentInterests,
         ragContext: ragContext.isNotEmpty ? ragContext : null,
         onStreamChunk: (partial) {
           if (_isTyping) {
@@ -583,216 +611,199 @@ class ChatProvider extends ChangeNotifier {
     required List<Map<String, dynamic>> history,
     required String newMessage,
     required String mentorName,
+    String? mentorEmail,
+    String? mentorId,
+    String? assignedClass,
     void Function(String partialText)? onStreamChunk,
   }) async {
-    String ragContext = '';
+    final StringBuffer sb = StringBuffer();
+    final effectiveEmail = (mentorEmail != null && mentorEmail.isNotEmpty)
+        ? mentorEmail
+        : (_currentUser?.email ?? '');
+    final effectiveId = (mentorId != null && mentorId.isNotEmpty)
+        ? mentorId
+        : (_currentUser?.id ?? '');
+    final effectiveClass = (assignedClass != null && assignedClass.isNotEmpty)
+        ? assignedClass
+        : (_currentUser?.assignedClass ?? 'CSE 5A');
+    final lowerMsg = newMessage.toLowerCase();
 
-    final normalizedMessage = newMessage.toLowerCase();
-    final isStudentListRequest = RegExp(r'\b(list|roster|students?|class)\b')
-            .hasMatch(normalizedMessage) &&
-        RegExp(r'\b(student|students|class|assigned|roll|name)\b')
-            .hasMatch(normalizedMessage);
-
-    if (isStudentListRequest) {
-      ragContext = '\n[ASSIGNED_STUDENT_LIST_FROM_MY_CLASS_TAB]\n'
-          'This is the complete list of students assigned to this mentor.\n';
-      if (_myStudents.isEmpty) {
-        ragContext += '- No students are currently assigned.\n';
-      } else {
-        for (final student in _myStudents) {
-          ragContext +=
-              '- NAME: ${student.name} | ROLL_NUMBER: ${student.rollNumber ?? 'N/A'}\n';
-        }
+    // 1. Ensure mentor's assigned class roster is loaded
+    if ((_myStudents.isEmpty || _myStudents.length < 5) && effectiveEmail.isNotEmpty) {
+      try {
+        _myStudents = await SupabaseService.getMyStudents(effectiveEmail);
+      } catch (e) {
+        debugPrint('⚠️ Error loading students for mentor AI: $e');
       }
-      ragContext += '[END_ASSIGNED_STUDENT_LIST]\n';
     }
 
-    // 1. Detect if mentor is asking about a specific student
-    // Split by spaces, commas, or colons
-    final words = isStudentListRequest
-        ? <String>[]
-        : newMessage
-            .split(RegExp(r'[\s,:]+'))
-            .where((w) => w.length > 2)
-            .toList();
+    final rollNumbers = _myStudents
+        .map((s) => s.rollNumber?.trim() ?? '')
+        .where((r) => r.isNotEmpty)
+        .toList();
 
-    // Sort words by length descending (longer words are more likely to be unique IDs/names)
-    words.sort((a, b) => b.length.compareTo(a.length));
+    // 2. High-Performance Parallel Bulk Queries for Class Data (1 Round-Trip)
+    List<Map<String, dynamic>> summaries = [];
+    List<Map<String, dynamic>> subjectRecords = [];
+    List<Map<String, dynamic>> examResults = [];
+
+    if (rollNumbers.isNotEmpty) {
+      try {
+        final summariesFuture = SupabaseService.getClassAttendanceSummaries(rollNumbers);
+        final subjectsFuture = SupabaseService.getClassSubjectAttendance(rollNumbers);
+        final resultsFuture = SupabaseService.getClassAcademicResults(rollNumbers);
+
+        final results = await Future.wait([summariesFuture, subjectsFuture, resultsFuture]);
+        summaries = results[0];
+        subjectRecords = results[1];
+        examResults = results[2];
+      } catch (e) {
+        debugPrint('⚠️ Bulk class data fetch error: $e');
+      }
+    }
+
+    // Build Student Lookup Map
+    final studentMap = <String, UserModel>{};
+    for (final s in _myStudents) {
+      if (s.rollNumber != null && s.rollNumber!.isNotEmpty) {
+        studentMap[s.rollNumber!.trim().toUpperCase()] = s;
+      }
+    }
+
+    // 3. Inject Verified Institutional Class Context
+    sb.writeln('\n[!!! CRITICAL: VERIFIED_OFFICIAL_CLASS_DATABASE_RECORDS !!!]');
+    sb.writeln('MENTOR: ${_currentUser?.name ?? mentorName} ($effectiveEmail)');
+    sb.writeln('ASSIGNED CLASS: $effectiveClass (Total Enrolled: ${_myStudents.length} Students)');
+
+    if (summaries.isNotEmpty) {
+      final totalWithAttendance = summaries.length;
+      final criticalDefaulters = summaries
+          .where((s) => ((s['overall_percentage'] as num?) ?? 0) < 75.0 || s['is_critical'] == true)
+          .toList();
+
+      sb.writeln('\n=== OFFICIAL CLASS ATTENDANCE SUMMARY (CYCLE: ${summaries.first['monitoring_cycle'] ?? "CURRENT WAVE"}) ===');
+      sb.writeln('- Total Students with Uploaded Attendance: $totalWithAttendance out of ${_myStudents.length}');
+      sb.writeln('- Total Critical Defaulters (< 75.0% Overall): ${criticalDefaulters.length}');
+
+      // Sort Ascending to immediately provide Top Lowest Attendance rankings
+      final sortedSummaries = List<Map<String, dynamic>>.from(summaries)
+        ..sort((a, b) => ((a['overall_percentage'] as num?) ?? 0).compareTo((b['overall_percentage'] as num?) ?? 0));
+
+      sb.writeln('\n=== TOP 10 LOWEST ATTENDANCE STUDENTS (RANKED 1 TO 10 ASCENDING) ===');
+      sb.writeln('| Rank | Roll Number | Student Name | Overall Attendance % | Defaulter Courses | Status |');
+      sb.writeln('| :---: | :--- | :--- | :---: | :---: | :--- |');
+      for (int i = 0; i < sortedSummaries.length && i < 10; i++) {
+        final sum = sortedSummaries[i];
+        final roll = (sum['student_roll_no'] ?? '').toString().trim();
+        final student = studentMap[roll.toUpperCase()];
+        final name = student?.name ?? 'Student $roll';
+        final pct = ((sum['overall_percentage'] as num?) ?? 0).toStringAsFixed(2);
+        final defCount = sum['defaulter_subject_cnt'] ?? 0;
+        final isCrit = (sum['is_critical'] == true) || (((sum['overall_percentage'] as num?) ?? 0) < 75.0);
+        final status = isCrit ? '⚠️ CRITICAL DEFAULTER (<75%)' : 'Eligible (>=75%)';
+        sb.writeln('| ${i + 1} | $roll | $name | $pct% | $defCount | $status |');
+      }
+
+      if (criticalDefaulters.isNotEmpty) {
+        sb.writeln('\n=== COMPLETE LIST OF ALL CRITICAL DEFAULTERS (< 75.0% ATTENDANCE) ===');
+        for (final d in criticalDefaulters) {
+          final roll = (d['student_roll_no'] ?? '').toString().trim();
+          final student = studentMap[roll.toUpperCase()];
+          final name = student?.name ?? 'Student $roll';
+          final pct = ((d['overall_percentage'] as num?) ?? 0).toStringAsFixed(2);
+          final defCount = d['defaulter_subject_cnt'] ?? 0;
+          sb.writeln('- $name ($roll): $pct% overall ($defCount subjects below 75%)');
+        }
+      }
+    } else {
+      sb.writeln('\n[ATTENDANCE STATUS]: No attendance monitoring report has been uploaded yet for this class.');
+    }
+
+    if (subjectRecords.isNotEmpty) {
+      final subjectGroups = <String, List<num>>{};
+      for (final r in subjectRecords) {
+        final sub = (r['subject_name'] ?? r['subject_code'] ?? 'Unknown').toString();
+        final pct = (r['attendance_percentage'] as num?) ?? 0;
+        subjectGroups.putIfAbsent(sub, () => []).add(pct);
+      }
+      sb.writeln('\n=== SUBJECT-WISE CLASS METRICS ===');
+      subjectGroups.forEach((sub, pcts) {
+        final avg = pcts.reduce((a, b) => a + b) / pcts.length;
+        final defs = pcts.where((p) => p < 75).length;
+        sb.writeln('- ${sub.toUpperCase()}: Class Avg ${avg.toStringAsFixed(1)}% ($defs students below 75%)');
+      });
+    }
+
+    if (examResults.isNotEmpty) {
+      sb.writeln('\n=== ACADEMIC EXAMINATION RESULTS & MARKS ===');
+      for (final res in examResults) {
+        final roll = (res['student_roll_no'] ?? '').toString().trim();
+        final student = studentMap[roll.toUpperCase()];
+        final name = student?.name ?? 'Student $roll';
+        final sub = res['subject_name'] ?? res['subject_code'] ?? 'Subject';
+        final marks = res['marks_obtained'] ?? res['marks'] ?? 'N/A';
+        final total = res['max_marks'] ?? '100';
+        final grade = res['grade'] ?? 'N/A';
+        sb.writeln('- $name ($roll) - ${sub.toString().toUpperCase()}: $marks/$total (Grade: $grade)');
+      }
+    }
+
+    // 4. Targeted student specific query lookup
+    final words = newMessage
+        .split(RegExp(r'[\s,:]+'))
+        .where((w) => w.length >= 3)
+        .toList();
 
     for (final word in words) {
       final student = await SupabaseService.findStudentByQuery(word,
-          mentorEmail: _currentUser?.email ??
-              (_myStudents.isNotEmpty ? _myStudents.first.mentorEmail : null));
-
+          mentorEmail: effectiveEmail.isNotEmpty ? effectiveEmail : null);
       if (student != null) {
-        final records = await SupabaseService.getAcademicRecord(student.id,
-            rollNo: student.rollNumber);
+        final roll = (student.rollNumber ?? '').trim().toUpperCase();
+        final stSubs = subjectRecords.where((r) => (r['student_roll_no'] ?? '').toString().trim().toUpperCase() == roll).toList();
+        final stSum = summaries.firstWhere(
+          (s) => (s['student_roll_no'] ?? '').toString().trim().toUpperCase() == roll,
+          orElse: () => {},
+        );
 
-        ragContext +=
-            '\n[!!! CRITICAL: OFFICIAL_COLLEGE_DATABASE_CONTENT !!!]\n';
-        ragContext += '[DB_SOURCE]: Supabase Verified\n';
-        ragContext += '[STUDENT_PROFILE]:\n';
-        ragContext += '- REAL_NAME: ${student.name}\n';
-        ragContext += '- ROLL_NUMBER: ${student.rollNumber ?? 'N/A'}\n';
-        ragContext += '- PROGRAM: ${student.program ?? 'N/A'}\n';
-        ragContext += '- SEMESTER: ${student.semester ?? 'N/A'}\n';
-
-        if (records.isNotEmpty) {
-          final attendance =
-              records.where((r) => r['record_type'] == 'attendance').toList();
-          final results =
-              records.where((r) => r['record_type'] == 'result').toList();
-
-          if (attendance.isNotEmpty) {
-            ragContext += '\n[ACADEMIC_ATTENDANCE_TRANSCRIPT]:\n';
-            for (var r in attendance) {
-              final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown';
-              final att = r['attendance_percentage'] ?? 'N/A';
-              ragContext +=
-                  '- SUBJECT: ${sub.toUpperCase()} | ATTENDANCE: $att% | CLASSES: ${r['attended_classes']}/${r['total_classes']}\n';
-            }
-          }
-
-          if (results.isNotEmpty) {
-            ragContext += '\n[ACADEMIC_RESULTS_MARKS_TRANSCRIPT]:\n';
-            for (var r in results) {
-              final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown';
-              final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
-              final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
-              final grade = r['grade'] ?? 'N/A';
-              final exam = r['exam_type'] ?? 'Examination';
-              ragContext +=
-                  '- SUBJECT: ${sub.toUpperCase()} | EXAM: $exam | MARKS: $marks/$total | GRADE: $grade\n';
-            }
-          }
-
-          ragContext +=
-              '\n[STRICT_INSTRUCTION]: Use ONLY the subjects and data listed above. If a subject (like OS) is not in the list above, do NOT mention it.\n';
-        } else {
-          ragContext +=
-              '\n[ALERT]: NO SUBJECT-WISE RECORDS FOUND IN DATABASE FOR THIS STUDENT ACCOUNT.\n';
+        sb.writeln('\n=== DETAILED PROFILE & RECORD FOR STUDENT: ${student.name.toUpperCase()} ($roll) ===');
+        sb.writeln('- Full Name: ${student.name} | Roll Number: $roll');
+        sb.writeln('- Program: ${student.program ?? 'B.Tech'} | Branch: ${student.branch ?? 'CSE'} | Sem: ${student.semester ?? '5'}');
+        sb.writeln('- Official Email: ${student.officialEmail ?? student.email} | Mobile: ${student.phone ?? student.mobileNo ?? 'N/A'}');
+        if (stSum.isNotEmpty) {
+          final pct = ((stSum['overall_percentage'] as num?) ?? 0).toStringAsFixed(2);
+          sb.writeln('- Overall Attendance: $pct% (Shortage in ${stSum['defaulter_subject_cnt'] ?? 0} courses)');
         }
-        ragContext += '[!!! END_OF_DATABASE_CONTENT !!!]\n';
+        if (stSubs.isNotEmpty) {
+          final stSubsDef = stSubs.where((sub) => ((sub['attendance_percentage'] as num?) ?? 0) < 75).length;
+          sb.writeln('- Subject-Wise Attendance Breakdown:');
+          for (final sub in stSubs) {
+            final sName = sub['subject_name'] ?? sub['subject_code'] ?? 'Subject';
+            final sPct = ((sub['attendance_percentage'] as num?) ?? 0).toStringAsFixed(1);
+            final fName = sub['faculty_name'] ?? 'Faculty';
+            final defStr = ((sub['attendance_percentage'] as num?) ?? 0) < 75 ? '⚠️ DEFAULTER' : 'Eligible';
+            sb.writeln('  * ${sName.toString().toUpperCase()}: $sPct% ($defStr) | Faculty: $fName');
+          }
+        }
         break;
       }
     }
 
-    final lowerMsg = newMessage.toLowerCase();
-    final mentorId = _currentUser?.id ?? '';
+    sb.writeln('\n[STRICT ANALYTICS DIRECTIVE]:');
+    sb.writeln('1. When asked for top 10 lowest attendance students, quote the EXACT rankings and percentages from the TOP 10 LOWEST ATTENDANCE STUDENTS table above.');
+    sb.writeln('2. When asked follow-ups (e.g. "recheck it", "rank them", "who is the lowest?"), use the verified data above directly.');
+    sb.writeln('3. Maintain strict zero hallucination — never fabricate percentages or student names.');
+    sb.writeln('[END OF VERIFIED DATABASE CONTENT]\n');
 
-    // If asking about students, class, overall performance, summary, marks, or all students
-    final isClassOrAllStudentsQuery = lowerMsg.contains('student') ||
-        lowerMsg.contains('class') ||
-        lowerMsg.contains('overall') ||
-        lowerMsg.contains('performance') ||
-        lowerMsg.contains('summary') ||
-        lowerMsg.contains('attendance') ||
-        lowerMsg.contains('result') ||
-        lowerMsg.contains('mark') ||
-        lowerMsg.contains('grade') ||
-        lowerMsg.contains('score') ||
-        lowerMsg.contains('all') ||
-        lowerMsg.contains('who') ||
-        lowerMsg.contains('list') ||
-        lowerMsg.contains('everyone');
-
-    if (isClassOrAllStudentsQuery) {
-      if (_myStudents.isEmpty && _currentUser?.email != null) {
-        try {
-          _myStudents = await SupabaseService.getMyStudents(_currentUser!.email);
-        } catch (e) {
-          debugPrint('⚠️ Error loading students for mentor AI: $e');
-        }
-      }
-
-      if (_myStudents.isNotEmpty) {
-        final studentsWithResults = <UserModel>[];
-        final studentsWithoutResults = <UserModel>[];
-        final studentsWithAttendance = <UserModel>[];
-        final studentRecordsMap = <String, List<Map<String, dynamic>>>{};
-
-        for (final s in _myStudents) {
-          final records = await SupabaseService.getAcademicRecord(s.id, rollNo: s.rollNumber);
-          studentRecordsMap[s.id] = records;
-
-          final hasResults = records.any((r) => r['record_type'] == 'result');
-          final hasAttendance = records.any((r) => r['record_type'] == 'attendance');
-
-          if (hasResults) {
-            studentsWithResults.add(s);
-          } else {
-            studentsWithoutResults.add(s);
-          }
-
-          if (hasAttendance) {
-            studentsWithAttendance.add(s);
-          }
-        }
-
-        ragContext += '\n[!!! CRITICAL: OFFICIAL_CLASS_STUDENTS_ROSTER_AND_PERFORMANCE !!!]\n';
-        ragContext += 'Mentor: ${_currentUser?.name ?? mentorName} (${_currentUser?.email ?? 'N/A'})\n';
-        ragContext += '=== CLASS SUMMARY METRICS ===\n';
-        ragContext += '- Total Assigned Students in Class: ${_myStudents.length}\n';
-        ragContext += '- Students with Examination Results in Database: ${studentsWithResults.length} out of ${_myStudents.length} (${studentsWithResults.map((s) => s.name).join(', ')})\n';
-        ragContext += '- Students without Results Uploaded Yet: ${studentsWithoutResults.length} out of ${_myStudents.length} (${studentsWithoutResults.map((s) => s.name).join(', ')})\n';
-        ragContext += '- Students with Attendance Records in Database: ${studentsWithAttendance.length} out of ${_myStudents.length} (${studentsWithAttendance.map((s) => s.name).join(', ')})\n\n';
-
-        for (int i = 0; i < _myStudents.length; i++) {
-          final s = _myStudents[i];
-          final records = studentRecordsMap[s.id] ?? [];
-          ragContext += '=== STUDENT ${i + 1}: ${s.name.toUpperCase()} ===\n';
-          ragContext += '- Roll Number: ${s.rollNumber ?? 'Not Assigned'}\n';
-          ragContext += '- Program: ${s.program ?? 'N/A'} | Branch: ${s.branch ?? 'N/A'} | Semester: ${s.semester ?? 'N/A'}\n';
-          ragContext += '- Email: ${s.email}\n';
-
-          if (records.isNotEmpty) {
-            final attendance = records.where((r) => r['record_type'] == 'attendance').toList();
-            final results = records.where((r) => r['record_type'] == 'result').toList();
-
-            if (attendance.isNotEmpty) {
-              ragContext += '- Attendance Transcript:\n';
-              for (var r in attendance) {
-                final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown';
-                final att = r['attendance_percentage'] ?? 'N/A';
-                final attended = r['attended_classes'] ?? '?';
-                final total = r['total_classes'] ?? '?';
-                ragContext += '  * ${sub.toUpperCase()}: $att% ($attended/$total classes attended)\n';
-              }
-            } else {
-              ragContext += '- Attendance Transcript: No subject attendance records uploaded yet.\n';
-            }
-
-            if (results.isNotEmpty) {
-              ragContext += '- Academic Results & Marks:\n';
-              for (var r in results) {
-                final sub = r['subject_name'] ?? r['subject_code'] ?? 'Unknown';
-                final marks = r['marks_obtained'] ?? r['marks'] ?? 'N/A';
-                final total = r['max_marks'] ?? r['total_marks'] ?? 'N/A';
-                final grade = r['grade'] ?? 'N/A';
-                final exam = r['exam_type'] ?? 'Examination';
-                ragContext += '  * ${sub.toUpperCase()} ($exam): $marks/$total (Grade: $grade)\n';
-              }
-            } else {
-              ragContext += '- Academic Results: No examination marks uploaded yet.\n';
-            }
-          } else {
-            ragContext += '- Status: Enrolled student. No subject attendance or exam marks have been uploaded to the database yet.\n';
-          }
-          ragContext += '\n';
-        }
-        ragContext += '[STRICT_ANALYTICS_INSTRUCTION]: When asked about student counts, how many students are present in results, or class summaries, directly quote the exact numbers from the CLASS SUMMARY METRICS above (e.g. "There are exactly 2 students with examination results recorded in the database: Aayush Dubey and Aditya Vats out of 7 total assigned students"). Do not confuse "present in result" with class attendance presence.\n';
-        ragContext += '[!!! END_OF_CLASS_STUDENTS_ROSTER !!!]\n';
-      }
-    }
+    String ragContext = sb.toString();
 
     // 2. Deep Document Text Scanning for Student Names, Roll Numbers, or Document Queries
     try {
       List<StudentDocument> mentorDocs = [];
-      if (mentorId.isNotEmpty) {
-        mentorDocs = await SupabaseService.getMentorDocuments(mentorId);
+      if (effectiveId.isNotEmpty) {
+        mentorDocs = await SupabaseService.getMentorDocuments(effectiveId);
       }
       if (mentorDocs.isEmpty) {
-        mentorDocs = await SupabaseService.getStudentAccessibleDocuments(studentId: mentorId);
+        mentorDocs = await SupabaseService.getStudentAccessibleDocuments(studentId: effectiveId);
       }
 
       final isDocOrResultQuery = lowerMsg.contains('document') ||

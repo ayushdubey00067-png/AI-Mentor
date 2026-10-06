@@ -7,6 +7,7 @@ import '../utils/app_theme.dart';
 import '../utils/constants.dart';
 import 'student/student_home_screen.dart';
 import 'mentor/mentor_dashboard_screen.dart';
+import 'admin/admin_dashboard_screen.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -14,262 +15,97 @@ class AuthScreen extends StatefulWidget {
   State<AuthScreen> createState() => _AuthScreenState();
 }
 
-class _AuthScreenState extends State<AuthScreen>
-    with SingleTickerProviderStateMixin {
-  late TabController _tab;
-  bool _isLogin = true;
-  String _role = 'student';
-  String? _errorMsg;
-
-  // Login
+class _AuthScreenState extends State<AuthScreen> {
   final _loginEmailCtrl = TextEditingController();
   final _loginPassCtrl = TextEditingController();
   final _loginKey = GlobalKey<FormState>();
-  bool _hideLogin = true;
-
-  // Register
-  final _rNameCtrl = TextEditingController();
-  final _rEmailCtrl = TextEditingController();
-  final _rPassCtrl = TextEditingController();
-  final _rConfCtrl = TextEditingController();
-  final _rRollCtrl = TextEditingController(); // ← student roll no
-  final _rMentorCtrl = TextEditingController(); // ← mentor email
-  final _regKey = GlobalKey<FormState>();
-  bool _hideReg = true;
-  bool _hideConf = true;
-
-  // Academic Dropdowns State
-  String? _selectedProgram = 'B.Tech';
-  String? _selectedBranch = 'Computer Science & Engineering';
-  String? _selectedSemester = '5';
-  String? _selectedSection = 'CSE 5A';
-
-  static const List<String> _programs = [
-    'B.Tech',
-    'BCA',
-    'BBA',
-    'B.Sc',
-    'B.Ed',
-    'Law (BA/BBA LLB)',
-    'M.Tech',
-    'M.Sc',
-    'MBA',
-  ];
-
-  static const List<String> _branches = [
-    'Computer Science & Engineering',
-    'CSE (AI & ML)',
-    'CSE (GenAI & Data Science)',
-    'CSE (Full Stack Development)',
-    'CSE (Cyber Security & Threat Intel)',
-    'Robotics & Artificial Intelligence',
-    'Electronics & Communication Engineering',
-    'Mechanical Engineering',
-    'Cloud Computing',
-    'FinTech',
-    'Business Analytics',
-    'General Management',
-    'Law',
-    'Education',
-    'Physics / Chemistry / Forensic',
-  ];
-
-  static const List<String> _semesters = [
-    '1', '2', '3', '4', '5', '6', '7', '8'
-  ];
-
-  static const List<String> _sections = [
-    'CSE 5A', 'CSE 5B', 'CSE 5C', 'CSE 5D',
-    'CSE 1A', 'CSE 1B',
-    'CSE 3A', 'CSE 3B', 'CSE 3C',
-    'CSE 7A', 'CSE 7B', 'CSE 7C',
-    'AIML 1A', 'AIML 1B', 'AIML 1C',
-    'AIML 3A', 'AIML 3B', 'AIML 3C',
-    'AIML 5A', 'AIML 5B',
-    'AIML 7A', 'AIML 7B', 'AIML 7C',
-    'FSD 3', 'FSD 5',
-    'CSTI 1', 'CSTI 3', 'CSTI 5', 'CSTI 7',
-    'B.Tech ECE Sem 1', 'B.Tech ECE SEM 3', 'B.Tech ECE SEM 5', 'B.TECH ECE SEM 7',
-    'B.Tech. GenAI 1', 'B.TECH GenAI 3', 'B.TECH QUANTUM 1',
-    'BCA CC3', 'BCA FINTECH3',
-    'BBA BA SEM I', 'BBA BA SEM III', 'BBA BA SEM V',
-    'B.A B.ED Sem 1', 'B.A B.ED SEM 3', 'B.A B.ED SEM 5', 'B.A B.ED SEM 7',
-    'SoL_BA LLB Semester-I', 'SoL_BA LLB Semester-III', 'SoL_BA LLB Semester-V', 'SoL_BA LLB Semester-VII',
-    'M.TECH. CSE 3',
-  ];
-
-  @override
-  void initState() {
-    super.initState();
-    _tab = TabController(length: 2, vsync: this);
-    _tab.addListener(() {
-      if (_tab.indexIsChanging) return;
-      setState(() {
-        _isLogin = _tab.index == 0;
-        _errorMsg = null;
-      });
-    });
-  }
+  bool _hidePassword = true;
+  String? _errorMsg;
 
   @override
   void dispose() {
-    _tab.dispose();
-    for (final c in [
-      _loginEmailCtrl,
-      _loginPassCtrl,
-      _rNameCtrl,
-      _rEmailCtrl,
-      _rPassCtrl,
-      _rConfCtrl,
-      _rRollCtrl,
-      _rMentorCtrl
-    ]) {
-      c.dispose();
-    }
+    _loginEmailCtrl.dispose();
+    _loginPassCtrl.dispose();
     super.dispose();
   }
 
   void _goHome(AuthProvider auth) {
-    Navigator.of(context).pushReplacement(MaterialPageRoute(
-      builder: (_) => auth.isMentor
-          ? const MentorDashboardScreen()
-          : const StudentHomeScreen(),
-    ));
+    if (auth.isAdmin) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => const AdminDashboardScreen(),
+      ));
+    } else if (auth.isMentor) {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => const MentorDashboardScreen(),
+      ));
+    } else {
+      Navigator.of(context).pushReplacement(MaterialPageRoute(
+        builder: (_) => const StudentHomeScreen(),
+      ));
+    }
   }
 
   Future<void> _login() async {
     if (!(_loginKey.currentState?.validate() ?? false)) return;
     setState(() => _errorMsg = null);
     final auth = context.read<AuthProvider>();
-    final error = await auth.login(_loginEmailCtrl.text, _loginPassCtrl.text);
+    final error = await auth.login(_loginEmailCtrl.text.trim(), _loginPassCtrl.text.trim());
     if (!mounted) return;
     if (error == null) {
       _goHome(auth);
       return;
     }
     if (error == 'invalid_credentials') {
-      _rEmailCtrl.text = _loginEmailCtrl.text.trim();
-      _showNotFoundSheet();
+      setState(() => _errorMsg = 'Invalid email/phone or password. Please verify your institutional login credentials.');
     } else {
       setState(() => _errorMsg = error.contains('RLS')
-          ? '⚠️ DB permission error. Run supabase_schema.sql in Supabase SQL Editor.'
+          ? '⚠️ Database permission error. Please verify Supabase access.'
           : error.replaceAll('Exception: ', ''));
     }
-  }
-
-  Future<void> _register() async {
-    if (!(_regKey.currentState?.validate() ?? false)) return;
-    if (_rPassCtrl.text.trim() != _rConfCtrl.text.trim()) {
-      setState(() => _errorMsg = 'Passwords do not match');
-      return;
-    }
-    if (_role == 'student' && _rRollCtrl.text.trim().isEmpty) {
-      setState(() => _errorMsg = 'Roll Number is required for students');
-      return;
-    }
-    setState(() => _errorMsg = null);
-    final auth = context.read<AuthProvider>();
-    final error = await auth.register(
-      email: _rEmailCtrl.text,
-      password: _rPassCtrl.text,
-      name: _rNameCtrl.text,
-      role: _role,
-      program: _role == 'student' ? _selectedProgram : null,
-      branch: _role == 'student' ? _selectedBranch : null,
-      semester: _role == 'student' ? _selectedSemester : null,
-      section: _role == 'student' ? _selectedSection : null,
-      rollNumber: _rRollCtrl.text,
-      mentorEmail: _role == 'student' ? _rMentorCtrl.text : null,
-    );
-    if (!mounted) return;
-    if (error == null) {
-      _goHome(auth);
-      return;
-    }
-    if (error.contains('duplicate_email') || error.contains('already')) {
-      _loginEmailCtrl.text = _rEmailCtrl.text.trim();
-      setState(() => _errorMsg = 'Email already registered. Please Sign In.');
-      _tab.animateTo(0);
-    } else if (error.contains('invalid_mentor')) {
-      setState(() => _errorMsg = error
-          .replaceAll('Exception: ', '')
-          .replaceAll('invalid_mentor: ', ''));
-    } else {
-      setState(() => _errorMsg = error
-          .replaceAll('Exception: ', '')
-          .replaceAll('duplicate_email: ', ''));
-    }
-  }
-
-  void _showNotFoundSheet() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 36),
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                  color: Colors.grey[300],
-                  borderRadius: BorderRadius.circular(4))),
-          const SizedBox(height: 20),
-          const Icon(Icons.person_search, size: 42, color: AppTheme.primary),
-          const SizedBox(height: 12),
-          Text('No Account Found',
-              style: GoogleFonts.playfairDisplay(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w700,
-                  color: AppTheme.primary)),
-          const SizedBox(height: 8),
-          Text(
-              'No account for\n${_loginEmailCtrl.text.trim()}\n\nWould you like to register?',
-              textAlign: TextAlign.center,
-              style: GoogleFonts.lato(
-                  fontSize: 14, color: AppTheme.textSecondary, height: 1.6)),
-          const SizedBox(height: 24),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              icon: const Icon(Icons.app_registration),
-              label: const Text('Register Now'),
-              onPressed: () {
-                Navigator.pop(ctx);
-                _tab.animateTo(1);
-              },
-            ),
-          ),
-          TextButton(
-              onPressed: () => Navigator.pop(ctx),
-              child: Text('Try again',
-                  style: GoogleFonts.lato(color: AppTheme.textSecondary))),
-        ]),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final size = MediaQuery.of(context).size;
+
     return Scaffold(
       body: Container(
+        width: double.infinity,
+        height: double.infinity,
         decoration: const BoxDecoration(
           gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF0D1B3E), AppTheme.primary, Color(0xFF1E3A7B)]),
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF0A1128),
+              Color(0xFF0F1C3F),
+              Color(0xFF1E293B),
+            ],
+          ),
         ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 28),
-              child: Column(children: [
-                _header(),
-                const SizedBox(height: 32),
-                _card(auth),
-              ]),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 460),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // ── Brand Header ────────────────────────────
+                    _buildBrandHeader(),
+                    const SizedBox(height: 28),
+
+                    // ── Login Card ──────────────────────────────
+                    _buildLoginCard(auth),
+                    const SizedBox(height: 24),
+
+                    // ── Institutional Footer ────────────────────
+                    _buildInstitutionalFooter(),
+                  ],
+                ),
+              ),
             ),
           ),
         ),
@@ -277,475 +113,245 @@ class _AuthScreenState extends State<AuthScreen>
     );
   }
 
-  Widget _header() => Column(children: [
+  Widget _buildBrandHeader() {
+    return Column(
+      children: [
         Container(
-          width: 86,
-          height: 86,
+          width: 72,
+          height: 72,
           decoration: BoxDecoration(
-              color: AppTheme.accent,
-              shape: BoxShape.circle,
-              boxShadow: [
-                BoxShadow(
-                    color: AppTheme.accent.withOpacity(0.45),
-                    blurRadius: 24,
-                    offset: const Offset(0, 10))
-              ]),
-          child: const Icon(Icons.smart_toy_rounded,
-              color: Colors.white, size: 44),
-        ),
-        const SizedBox(height: 16),
-        Text(kAppName,
-            style: GoogleFonts.playfairDisplay(
-                fontSize: 30,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
-                letterSpacing: 1)),
-        const SizedBox(height: 6),
-        Text('Your Academic Guide, Always Here',
-            style: GoogleFonts.lato(fontSize: 13, color: Colors.white70)),
-      ]);
-
-  Widget _card(AuthProvider auth) => Container(
-        constraints: const BoxConstraints(maxWidth: 440),
-        decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            shape: BoxShape.circle,
+            color: AppTheme.accentGold,
             boxShadow: [
               BoxShadow(
-                  color: Colors.black.withOpacity(0.25),
-                  blurRadius: 48,
-                  offset: const Offset(0, 20))
-            ]),
-        child: Column(children: [
-          Container(
-            margin: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-                color: AppTheme.surfaceDark,
-                borderRadius: BorderRadius.circular(14)),
-            child: TabBar(
-              controller: _tab,
-              indicator: BoxDecoration(
-                  color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                        color: AppTheme.primary.withOpacity(0.3),
-                        blurRadius: 8,
-                        offset: const Offset(0, 4))
-                  ]),
-              indicatorSize: TabBarIndicatorSize.tab,
-              labelColor: Colors.white,
-              unselectedLabelColor: AppTheme.textSecondary,
-              dividerColor: Colors.transparent,
-              labelStyle:
-                  GoogleFonts.lato(fontSize: 15, fontWeight: FontWeight.w700),
-              unselectedLabelStyle: GoogleFonts.lato(fontSize: 15),
-              tabs: const [Tab(text: 'Sign In'), Tab(text: 'Register')],
-            ),
+                color: AppTheme.accentGold.withOpacity(0.35),
+                blurRadius: 24,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          if (_errorMsg != null)
-            Container(
-              margin: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                  color: AppTheme.error.withOpacity(0.08),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: AppTheme.error.withOpacity(0.3))),
-              child:
-                  Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Icon(Icons.error_outline,
-                    color: AppTheme.error, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                    child: Text(_errorMsg!,
-                        style: GoogleFonts.lato(
-                            color: AppTheme.error, fontSize: 13, height: 1.5))),
-                GestureDetector(
-                    onTap: () => setState(() => _errorMsg = null),
-                    child: const Icon(Icons.close,
-                        color: AppTheme.error, size: 16)),
-              ]),
-            ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 0, 22, 26),
-            child: _isLogin ? _loginForm(auth) : _regForm(auth),
+          child: const Icon(
+            Icons.school_rounded,
+            color: AppTheme.primaryNavy,
+            size: 38,
           ),
-        ]),
-      );
+        ),
+        const SizedBox(height: 16),
+        Text(
+          kAppName,
+          style: GoogleFonts.outfit(
+            fontSize: 32,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+            letterSpacing: 0.5,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Institutional Academic Concierge & EMS',
+          style: GoogleFonts.inter(
+            fontSize: 13,
+            color: Colors.white70,
+            letterSpacing: 0.2,
+          ),
+        ),
+      ],
+    );
+  }
 
-  Widget _loginForm(AuthProvider auth) => Form(
+  Widget _buildLoginCard(AuthProvider auth) {
+    return Container(
+      padding: const EdgeInsets.all(32),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.3),
+            blurRadius: 40,
+            offset: const Offset(0, 16),
+          ),
+        ],
+      ),
+      child: Form(
         key: _loginKey,
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _lbl('Email Address'),
-          TextFormField(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryNavy.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(
+                    Icons.lock_person_rounded,
+                    color: AppTheme.primaryNavy,
+                    size: 22,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Portal Sign In',
+                      style: GoogleFonts.outfit(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryNavy,
+                      ),
+                    ),
+                    Text(
+                      'Admin • Faculty Mentor • Student',
+                      style: GoogleFonts.inter(
+                        fontSize: 12,
+                        color: Colors.grey.shade600,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const Divider(height: 28),
+
+            if (_errorMsg != null) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.error_outline, color: Colors.red, size: 20),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(
+                        _errorMsg!,
+                        style: GoogleFonts.inter(color: Colors.red.shade900, fontSize: 12, height: 1.4),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _errorMsg = null),
+                      child: const Icon(Icons.close, color: Colors.red, size: 16),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+
+            // Email or Phone Field
+            Text(
+              'Official Email / User ID',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextFormField(
               controller: _loginEmailCtrl,
               keyboardType: TextInputType.emailAddress,
               textInputAction: TextInputAction.next,
-              validator: (v) => (v == null || !v.contains('@'))
-                  ? 'Enter a valid email'
-                  : null,
-              decoration: _deco('your@email.com', Icons.email_outlined)),
-          const SizedBox(height: 14),
-          _lbl('Password'),
-          TextFormField(
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter your registered email' : null,
+              decoration: InputDecoration(
+                hintText: 'e.g. gunjan@mru.edu.in or student@mru.ac.in',
+                prefixIcon: const Icon(Icons.email_outlined, size: 20),
+                isDense: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              ),
+            ),
+            const SizedBox(height: 18),
+
+            // Password Field
+            Text(
+              'Password / Mobile Number',
+              style: GoogleFonts.inter(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Colors.black87,
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextFormField(
               controller: _loginPassCtrl,
-              obscureText: _hideLogin,
+              obscureText: _hidePassword,
               textInputAction: TextInputAction.done,
               onFieldSubmitted: (_) => _login(),
-              validator: (v) => (v == null || v.trim().length < 4)
-                  ? 'Enter your password'
-                  : null,
-              decoration: _deco('••••••••', Icons.lock_outline,
-                  suffix: _eye(_hideLogin,
-                      () => setState(() => _hideLogin = !_hideLogin)))),
-          const SizedBox(height: 26),
-          _btn('Sign In', auth.isLoading, _login),
-          const SizedBox(height: 18),
-          _link("Don't have an account? ", 'Register here',
-              () => _tab.animateTo(1)),
-        ]),
-      );
-
-  Widget _regForm(AuthProvider auth) => Form(
-        key: _regKey,
-        child:
-            Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          _lbl('I am a'),
-          Row(children: [
-            _roleChip('student', 'Student', Icons.person_rounded),
-            const SizedBox(width: 10),
-            _roleChip(
-                'mentor', 'Mentor / Admin', Icons.admin_panel_settings_rounded),
-          ]),
-          const SizedBox(height: 14),
-          _lbl('Full Name *'),
-          TextFormField(
-              controller: _rNameCtrl,
-              textCapitalization: TextCapitalization.words,
-              textInputAction: TextInputAction.next,
-              validator: (v) =>
-                  (v == null || v.trim().isEmpty) ? 'Name is required' : null,
-              decoration: _deco('eg your name', Icons.badge_outlined)),
-          const SizedBox(height: 12),
-          _lbl('Email Address *'),
-          TextFormField(
-              controller: _rEmailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              textInputAction: TextInputAction.next,
-              validator: (v) => (v == null || !v.contains('@'))
-                  ? 'Enter a valid email'
-                  : null,
-              decoration: _deco('your@email.com', Icons.email_outlined)),
-          const SizedBox(height: 12),
-          _lbl('Password *'),
-          TextFormField(
-              controller: _rPassCtrl,
-              obscureText: _hideReg,
-              textInputAction: TextInputAction.next,
-              validator: (v) => (v == null || v.trim().length < 6)
-                  ? 'Min 6 characters'
-                  : null,
-              decoration: _deco('••••••••', Icons.lock_outline,
-                  suffix: _eye(
-                      _hideReg, () => setState(() => _hideReg = !_hideReg)))),
-          const SizedBox(height: 12),
-          _lbl('Confirm Password *'),
-          TextFormField(
-              controller: _rConfCtrl,
-              obscureText: _hideConf,
-              textInputAction: TextInputAction.next,
-              validator: (v) {
-                if (v == null || v.isEmpty) return 'Confirm password';
-                if (v.trim() != _rPassCtrl.text.trim())
-                  return 'Passwords do not match';
-                return null;
-              },
-              decoration: _deco('••••••••', Icons.lock_outline,
-                  suffix: _eye(_hideConf,
-                      () => setState(() => _hideConf = !_hideConf)))),
-
-          // Student-only fields
-          if (_role == 'student') ...[
-            const SizedBox(height: 14),
-
-            // ── Mentor Email box ─────────────────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                  color: AppTheme.accent.withOpacity(0.06),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppTheme.accent.withOpacity(0.4))),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(children: [
-                      const Icon(Icons.link, color: AppTheme.accent, size: 16),
-                      const SizedBox(width: 6),
-                      Text('Link to Your Mentor',
-                          style: GoogleFonts.lato(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.accent)),
-                    ]),
-                    const SizedBox(height: 4),
-                    Text(
-                        'Enter your mentor\'s registered email to link your account.',
-                        style: GoogleFonts.lato(
-                            fontSize: 12, color: AppTheme.textSecondary)),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: _rMentorCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      textInputAction: TextInputAction.next,
-                      validator: (v) {
-                        if (v != null &&
-                            v.trim().isNotEmpty &&
-                            !v.contains('@')) {
-                          return 'Enter a valid mentor email';
-                        }
-                        return null;
-                      },
-                      decoration: _deco('mentor@university.com',
-                          Icons.supervisor_account_outlined),
-                    ),
-                  ]),
+              validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter your password' : null,
+              decoration: InputDecoration(
+                hintText: '••••••••',
+                prefixIcon: const Icon(Icons.lock_outline, size: 20),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _hidePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined,
+                    size: 20,
+                  ),
+                  onPressed: () => setState(() => _hidePassword = !_hidePassword),
+                ),
+                isDense: true,
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+              ),
             ),
+            const SizedBox(height: 26),
 
-            const SizedBox(height: 12),
-
-            // ── Academic Details (Mandatory) ────────────────────────────────────
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                  color: AppTheme.primary.withOpacity(0.04),
-                  borderRadius: BorderRadius.circular(14),
-                  border:
-                      Border.all(color: AppTheme.primary.withOpacity(0.15))),
-              child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text('Academic Details (Mandatory)',
-                            style: GoogleFonts.lato(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: AppTheme.primary)),
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEFF6FF),
-                            borderRadius: BorderRadius.circular(4),
-                          ),
-                          child: Text('University Verified',
-                              style: GoogleFonts.lato(fontSize: 10, fontWeight: FontWeight.w700, color: const Color(0xFF1E40AF))),
-                        ),
-                      ],
+            // Submit Button
+            ElevatedButton(
+              onPressed: auth.isLoading ? null : _login,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryNavy,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                elevation: 2,
+              ),
+              child: auth.isLoading
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                    )
+                  : Text(
+                      'Sign In to Dashboard',
+                      style: GoogleFonts.inter(fontSize: 15, fontWeight: FontWeight.bold),
                     ),
-                    const SizedBox(height: 12),
-                    // Program Dropdown
-                    DropdownButtonFormField<String>(
-                      value: _selectedProgram,
-                      decoration: _deco('Program', Icons.school_outlined),
-                      items: _programs.map((p) => DropdownMenuItem(value: p, child: Text(p, style: GoogleFonts.lato(fontSize: 14)))).toList(),
-                      onChanged: (v) => setState(() => _selectedProgram = v),
-                      validator: (v) => v == null || v.isEmpty ? 'Please select your program' : null,
-                    ),
-                    const SizedBox(height: 10),
-                    // Branch Dropdown
-                    DropdownButtonFormField<String>(
-                      value: _selectedBranch,
-                      isExpanded: true,
-                      decoration: _deco('Branch', Icons.account_tree_outlined),
-                      items: _branches.map((b) => DropdownMenuItem(value: b, child: Text(b, style: GoogleFonts.lato(fontSize: 13), overflow: TextOverflow.ellipsis))).toList(),
-                      onChanged: (v) => setState(() => _selectedBranch = v),
-                      validator: (v) => v == null || v.isEmpty ? 'Please select your branch' : null,
-                    ),
-                    const SizedBox(height: 10),
-                    // Semester & Section Row
-                    Row(
-                      children: [
-                        Expanded(
-                          flex: 2,
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedSemester,
-                            decoration: _deco('Semester', Icons.calendar_today_outlined),
-                            items: _semesters.map((s) => DropdownMenuItem(value: s, child: Text('Sem $s', style: GoogleFonts.lato(fontSize: 13)))).toList(),
-                            onChanged: (v) => setState(() => _selectedSemester = v),
-                            validator: (v) => v == null || v.isEmpty ? 'Sem required' : null,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          flex: 3,
-                          child: DropdownButtonFormField<String>(
-                            value: _selectedSection,
-                            isExpanded: true,
-                            decoration: _deco('Section', Icons.meeting_room_outlined),
-                            items: _sections.map((sec) => DropdownMenuItem(value: sec, child: Text(sec, style: GoogleFonts.lato(fontSize: 13), overflow: TextOverflow.ellipsis))).toList(),
-                            onChanged: (v) => setState(() => _selectedSection = v),
-                            validator: (v) => v == null || v.isEmpty ? 'Section required' : null,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    // Roll Number
-                    TextFormField(
-                        controller: _rRollCtrl,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _register(),
-                        validator: (v) => (v == null || v.trim().isEmpty) ? 'Roll Number is required' : null,
-                        decoration: _deco('Roll Number (e.g. 2K24CSUN01015)',
-                            Icons.numbers_outlined)),
-                  ]),
             ),
           ],
-
-          const SizedBox(height: 24),
-          _btn('Create Account', auth.isLoading, _register),
-          const SizedBox(height: 16),
-          _link(
-              'Already have an account? ', 'Sign In', () => _tab.animateTo(0)),
-        ]),
-      );
-
-  Widget _lbl(String t) => Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(t,
-          style: GoogleFonts.lato(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: AppTheme.textSecondary)));
-
-  InputDecoration _deco(String hint, IconData icon, {Widget? suffix}) =>
-      InputDecoration(
-        hintText: hint,
-        hintStyle: GoogleFonts.lato(
-            color: AppTheme.textSecondary.withOpacity(0.55), fontSize: 14),
-        prefixIcon: Icon(icon, color: AppTheme.textSecondary, size: 20),
-        suffixIcon: suffix,
-        filled: true,
-        fillColor: AppTheme.surface,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFDDD9CE))),
-        enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: Color(0xFFDDD9CE))),
-        focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.primary, width: 2)),
-        errorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.error)),
-        focusedErrorBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: const BorderSide(color: AppTheme.error, width: 2)),
-      );
-
-  Widget _eye(bool hide, VoidCallback onTap) => IconButton(
-      icon: Icon(
-          hide ? Icons.visibility_off_outlined : Icons.visibility_outlined,
-          color: AppTheme.textSecondary,
-          size: 20),
-      onPressed: onTap);
-
-  Widget _roleChip(String role, String label, IconData icon) {
-    final sel = _role == role;
-    return Expanded(
-        child: GestureDetector(
-      onTap: () => setState(() {
-        _role = role;
-        _errorMsg = null;
-      }),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(vertical: 11),
-        decoration: BoxDecoration(
-          color: sel ? AppTheme.primary : AppTheme.surfaceDark,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-              color: sel ? AppTheme.primary : const Color(0xFFDDD9CE)),
-          boxShadow: sel
-              ? [
-                  BoxShadow(
-                      color: AppTheme.primary.withOpacity(0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 4))
-                ]
-              : [],
         ),
-        child: Column(children: [
-          Icon(icon,
-              color: sel ? Colors.white : AppTheme.textSecondary, size: 22),
-          const SizedBox(height: 4),
-          Text(label,
-              textAlign: TextAlign.center,
-              style: GoogleFonts.lato(
-                  color: sel ? Colors.white : AppTheme.textSecondary,
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12)),
-        ]),
       ),
-    ));
+    );
   }
 
-  Widget _btn(String label, bool loading, VoidCallback onTap) => Container(
-        height: 52,
-        decoration: BoxDecoration(
-          gradient: const LinearGradient(
-              colors: [AppTheme.primary, AppTheme.primaryLight]),
-          borderRadius: BorderRadius.circular(14),
-          boxShadow: [
-            BoxShadow(
-                color: AppTheme.primary.withOpacity(0.35),
-                blurRadius: 12,
-                offset: const Offset(0, 6))
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: loading ? null : onTap,
-            child: Center(
-                child: loading
-                    ? const SizedBox(
-                        width: 22,
-                        height: 22,
-                        child: CircularProgressIndicator(
-                            color: Colors.white, strokeWidth: 2.5))
-                    : Text(label,
-                        style: GoogleFonts.lato(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w700,
-                            color: Colors.white,
-                            letterSpacing: 0.4))),
+  Widget _buildInstitutionalFooter() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.06),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withOpacity(0.12)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(Icons.shield_outlined, color: AppTheme.accentGold, size: 20),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              'Institutional Access Only: Accounts and classes are provisioned directly by College Administration. For account assistance or credentials, contact your department office.',
+              style: GoogleFonts.inter(fontSize: 11, color: Colors.white70, height: 1.4),
+            ),
           ),
-        ),
-      );
-
-  Widget _link(String prefix, String linkText, VoidCallback onTap) => Center(
-          child: GestureDetector(
-        onTap: onTap,
-        child: RichText(
-            text: TextSpan(
-          text: prefix,
-          style: GoogleFonts.lato(fontSize: 13, color: AppTheme.textSecondary),
-          children: [
-            TextSpan(
-                text: linkText,
-                style: GoogleFonts.lato(
-                    fontSize: 13,
-                    color: AppTheme.primary,
-                    fontWeight: FontWeight.w700,
-                    decoration: TextDecoration.underline))
-          ],
-        )),
-      ));
+        ],
+      ),
+    );
+  }
 }

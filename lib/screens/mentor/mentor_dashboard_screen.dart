@@ -21,6 +21,11 @@ import '../../widgets/timetable_grid_view.dart';
 import '../../widgets/timetable_sync_dialog.dart';
 import '../../widgets/teacher_selector_dialog.dart';
 import '../../utils/mru_timetable_data.dart';
+import '../../utils/academic_session_utils.dart';
+import '../../widgets/upload_batch_students_dialog.dart';
+import '../../widgets/edit_section_semester_dialog.dart';
+import '../../widgets/student_detail_dialog.dart';
+import '../../widgets/upload_attendance_dialog.dart';
 import '../auth_screen.dart';
 import 'mentor_ai_chat_screen.dart';
 
@@ -467,20 +472,252 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
   // ══════════════════════════════════════════════════════════
   Widget _classTab(ChatProvider chat) {
     if (chat.isLoading) return _loadingView();
-    if (chat.myStudents.isEmpty) {
-      return _emptyView(
-        Icons.school_outlined,
-        'No students yet',
-        'Students appear here when they\nregister using your email address',
-      );
-    }
+
+    final auth = context.watch<AuthProvider>();
+    final mentorUser = auth.currentUser;
+    final currentTerm = AcademicSessionUtils.getCurrentTerm();
+    final currentYear = AcademicSessionUtils.getCurrentAcademicYear();
 
     return RefreshIndicator(
       onRefresh: _loadAll,
-      child: ListView.builder(
+      child: ListView(
         padding: const EdgeInsets.all(16),
-        itemCount: chat.myStudents.length,
-        itemBuilder: (_, i) => _studentCard(chat.myStudents[i], chat, i),
+        children: [
+          // ── Class Header & Ingestion Toolbar ─────────────────
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [Color(0xFF0F1C3F), Color(0xFF1E3A8A)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFF0F1C3F).withOpacity(0.2),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentGold,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        mentorUser?.assignedClass ?? _selectedMentorSection,
+                        style: GoogleFonts.outfit(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: AppTheme.primaryNavy,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        'Session: $currentYear (${currentTerm.toUpperCase()} Term)',
+                        style: GoogleFonts.inter(fontSize: 11, color: Colors.white),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      '${chat.myStudents.length} Students',
+                      style: GoogleFonts.inter(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Class Student Directory',
+                  style: GoogleFonts.outfit(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  'Auto-synchronized with semester progression & Excel directory sheets',
+                  style: GoogleFonts.inter(fontSize: 12, color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 8,
+                  children: [
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        if (mentorUser != null) {
+                          UploadBatchStudentsDialog.show(
+                            context,
+                            currentMentor: mentorUser,
+                            onImportSuccess: _loadAll,
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.upload_file_rounded, size: 18),
+                      label: Text(
+                        'Upload Batch Students (.xlsx)',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.accentGold,
+                        foregroundColor: AppTheme.primaryNavy,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        if (mentorUser != null) {
+                          UploadAttendanceDialog.show(
+                            context,
+                            currentUser: mentorUser,
+                            onUploadSuccess: _loadAll,
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.fact_check_outlined, size: 18),
+                      label: Text(
+                        'Upload Attendance (.csv, .xlsx)',
+                        style: GoogleFonts.inter(fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF10B981),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                      ),
+                    ),
+                    if (chat.myStudents.isNotEmpty)
+                      OutlinedButton.icon(
+                        onPressed: () => _showPromoteClassDialog(chat),
+                        icon: const Icon(Icons.auto_mode_rounded, size: 16, color: Colors.white),
+                        label: Text(
+                          'Promote Class Semester',
+                          style: GoogleFonts.inter(fontSize: 12, color: Colors.white),
+                        ),
+                        style: OutlinedButton.styleFrom(
+                          side: BorderSide(color: Colors.white.withOpacity(0.4)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // ── Student List ─────────────────────────────────────
+          if (chat.myStudents.isEmpty)
+            _emptyView(
+              Icons.school_outlined,
+              'No students in your class yet',
+              'Click "Upload Batch Students (.xlsx)" above to import\nyour official class directory spreadsheet.',
+            )
+          else
+            ...List.generate(
+              chat.myStudents.length,
+              (i) => _studentCard(chat.myStudents[i], chat, i),
+            ),
+        ],
+      ),
+    );
+  }
+
+  void _showPromoteClassDialog(ChatProvider chat) {
+    final auth = context.read<AuthProvider>();
+    final mentorEmail = auth.currentUser?.email ?? '';
+    String targetSem = '5';
+    String targetSec = 'A';
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: Row(
+            children: [
+              const Icon(Icons.auto_mode_rounded, color: AppTheme.accentGold),
+              const SizedBox(width: 10),
+              Text('Promote Class Batch', style: GoogleFonts.outfit(fontWeight: FontWeight.bold)),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'This will bulk-update all ${chat.myStudents.length} students assigned to you to the selected semester and section.',
+                style: GoogleFonts.inter(fontSize: 13, color: Colors.grey.shade700),
+              ),
+              const SizedBox(height: 16),
+              DropdownButtonFormField<String>(
+                value: targetSem,
+                decoration: const InputDecoration(labelText: 'Target Semester', border: OutlineInputBorder()),
+                items: ['1', '2', '3', '4', '5', '6', '7', '8'].map((s) => DropdownMenuItem(value: s, child: Text('Semester $s'))).toList(),
+                onChanged: (v) { if (v != null) setDState(() => targetSem = v); },
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                initialValue: targetSec,
+                decoration: const InputDecoration(labelText: 'Section (e.g. A, B, CSE 5A)', border: OutlineInputBorder()),
+                onChanged: (v) => targetSec = v.trim(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Cancel')),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.pop(ctx);
+                try {
+                  await SupabaseService.batchUpdateClassSemester(
+                    mentorEmail: mentorEmail,
+                    newSemester: targetSem,
+                    newSection: targetSec,
+                  );
+                  _loadAll();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        backgroundColor: const Color(0xFF10B981),
+                        content: Text('Successfully promoted class to Semester $targetSem!'),
+                      ),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Failed to promote batch: $e')),
+                    );
+                  }
+                }
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryNavy, foregroundColor: Colors.white),
+              child: const Text('Confirm Promotion'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -496,6 +733,12 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
         .take(2)
         .join()
         .toUpperCase();
+
+    final effectiveSem = AcademicSessionUtils.getEffectiveSemester(
+      baseSemester: s.baseSemester ?? s.semester ?? '4',
+      manualOverrideSemester: s.semester,
+      baseYear: s.baseYear,
+    );
 
     final colors = [
       [const Color(0xFFEFF6FF), const Color(0xFF3B82F6)],
@@ -517,107 +760,124 @@ class _MentorDashboardScreenState extends State<MentorDashboardScreen>
               offset: const Offset(0, 4))
         ],
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            // Avatar
-            Container(
-              width: 52,
-              height: 52,
-              decoration: BoxDecoration(
-                color: c[0],
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Center(
-                  child: Text(initials,
-                      style: GoogleFonts.playfairDisplay(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: c[1]))),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-                child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                  Text(s.name,
-                      style: GoogleFonts.lato(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827))),
-                  const SizedBox(height: 2),
-                  Text(s.email,
-                      style: GoogleFonts.lato(
-                          fontSize: 12, color: const Color(0xFF6B7280)),
-                      overflow: TextOverflow.ellipsis),
-                ])),
-            if (openI > 0)
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFFEF2F2),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFFCA5A5)),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: () {
+            StudentDetailDialog.show(
+              context,
+              student: s,
+              onDataChanged: _loadAll,
+            );
+          },
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                // Avatar
+                Container(
+                  width: 52, height: 52,
+                  decoration: BoxDecoration(
+                    color: c[0], borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Center(child: Text(initials, style: GoogleFonts.playfairDisplay(
+                      fontSize: 20, fontWeight: FontWeight.w700, color: c[1]))),
                 ),
-                child: Row(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.warning_amber_rounded,
-                      size: 12, color: Color(0xFFEF4444)),
-                  const SizedBox(width: 4),
-                  Text('$openI issue${openI > 1 ? 's' : ''}',
-                      style: GoogleFonts.lato(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFFEF4444))),
-                ]),
+                const SizedBox(width: 14),
+                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(s.name, style: GoogleFonts.lato(fontSize: 16,
+                              fontWeight: FontWeight.w700, color: const Color(0xFF111827))),
+                        ),
+                        if (s.gender != null && s.gender != 'NA') ...[
+                          const SizedBox(width: 6),
+                          Text('(${s.gender})', style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                        ],
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${s.officialEmail ?? s.email} • Mobile (Pass): ${s.mobileNo ?? s.phone ?? 'N/A'}',
+                      style: GoogleFonts.lato(fontSize: 12, color: const Color(0xFF6B7280)),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (s.personalEmail != null && s.personalEmail!.isNotEmpty)
+                      Text(
+                        'Personal: ${s.personalEmail}',
+                        style: GoogleFonts.lato(fontSize: 11, color: const Color(0xFF9CA3AF)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                  ])),
+                IconButton(
+                  icon: const Icon(Icons.edit_note_rounded, color: AppTheme.accentGold, size: 24),
+                  tooltip: 'Edit Section & Semester',
+                  onPressed: () {
+                    EditSectionSemesterDialog.show(
+                      context,
+                      student: s,
+                      onSaved: _loadAll,
+                    );
+                  },
+                ),
+                if (openI > 0)
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFEF2F2),
+                      borderRadius: BorderRadius.circular(20),
+                      border: Border.all(color: const Color(0xFFFCA5A5)),
+                    ),
+                    child: Row(mainAxisSize: MainAxisSize.min, children: [
+                      const Icon(Icons.warning_amber_rounded, size: 12,
+                          color: Color(0xFFEF4444)),
+                      const SizedBox(width: 4),
+                      Text('$openI issue${openI > 1 ? 's' : ''}',
+                          style: GoogleFonts.lato(fontSize: 11,
+                              fontWeight: FontWeight.w700, color: const Color(0xFFEF4444))),
+                    ]),
+                  ),
+              ]),
+
+              // Academic chips (Roll Number, Semester, Section ONLY)
+              const SizedBox(height: 12),
+              Wrap(spacing: 8, runSpacing: 6, children: [
+                if (s.rollNumber?.isNotEmpty == true)
+                  _infoChip(Icons.badge_outlined, s.rollNumber!, c[1]),
+                _infoChip(Icons.calendar_today_rounded, 'Semester $effectiveSem', c[1]),
+                _infoChip(Icons.meeting_room_outlined, 'Section ${s.section ?? 'A'}', c[1]),
+              ]),
+
+              const SizedBox(height: 12),
+              // Stats row
+              Container(
+                padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF9FAFB),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  children: [
+                    _miniStat2('Chats', '${convs.length}',
+                        Icons.chat_bubble_outline_rounded, c[1]),
+                    _divider2(),
+                    _miniStat2('Issues', '${myIssues.length}',
+                        Icons.report_outlined, c[1]),
+                    _divider2(),
+                    _miniStat2('Resolved', '${convs.where((c) => c.isResolved).length}',
+                        Icons.check_circle_outline_rounded, c[1]),
+                  ]),
               ),
-          ]),
-
-          // Academic chips
-          if (s.program != null || s.branch != null) ...[
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 6, children: [
-              if (s.program?.isNotEmpty == true)
-                _infoChip(Icons.school_rounded, s.program!, c[1]),
-              if (s.rollNumber?.isNotEmpty == true)
-                _infoChip(Icons.numbers_rounded, s.rollNumber!, c[1]),
-              if (s.branch?.isNotEmpty == true)
-                _infoChip(Icons.account_tree_rounded, s.branch!, c[1]),
-              if (s.semester?.isNotEmpty == true)
-                _infoChip(
-                    Icons.calendar_today_rounded, 'Sem ${s.semester!}', c[1]),
             ]),
-          ],
-
-          const SizedBox(height: 12),
-          // Stats row
-          Container(
-            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9FAFB),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: [
-                  _miniStat2('Chats', '${convs.length}',
-                      Icons.chat_bubble_outline_rounded, c[1]),
-                  _divider2(),
-                  _miniStat2('Issues', '${myIssues.length}',
-                      Icons.report_outlined, c[1]),
-                  _divider2(),
-                  _miniStat2(
-                      'Resolved',
-                      '${convs.where((c) => c.isResolved).length}',
-                      Icons.check_circle_outline_rounded,
-                      c[1]),
-                ]),
           ),
-        ]),
+        ),
       ),
     );
   }
+
 
   Widget _infoChip(IconData icon, String label, Color color) => Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),

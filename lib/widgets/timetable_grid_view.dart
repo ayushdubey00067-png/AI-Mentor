@@ -126,12 +126,14 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
 
   Widget _buildHeader(BuildContext context) {
     final titleText = _activeMode == 'student'
-        ? 'MANAV RACHNA UNIVERSITY • CLASS TIMETABLE'
-        : 'MANAV RACHNA UNIVERSITY • FACULTY TIMETABLE';
+        ? 'MRU • CLASS TIMETABLE'
+        : 'MRU • FACULTY TIMETABLE';
     final badgeText = _activeMode == 'student' ? _lockedSection : _assignedTeacher;
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 700;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: isMobile ? 10 : 14),
       decoration: const BoxDecoration(
         color: Color(0xFF0F172A),
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
@@ -139,7 +141,7 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
       child: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            padding: const EdgeInsets.all(7),
             decoration: BoxDecoration(
               color: const Color(0xFF0284C7).withValues(alpha: 0.25),
               borderRadius: BorderRadius.circular(10),
@@ -147,26 +149,29 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
             child: Icon(
               _activeMode == 'student' ? Icons.school_rounded : Icons.person_rounded,
               color: const Color(0xFF38BDF8),
-              size: 22,
+              size: isMobile ? 18 : 22,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 10),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Row(
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(
                       titleText,
                       style: GoogleFonts.lato(
-                        fontSize: 13.5,
+                        fontSize: isMobile ? 12.0 : 13.5,
                         fontWeight: FontWeight.w900,
-                        letterSpacing: 1.0,
+                        letterSpacing: 0.8,
                         color: Colors.white,
                       ),
                     ),
-                    const SizedBox(width: 10),
                     InkWell(
                       borderRadius: BorderRadius.circular(6),
                       onTap: _activeMode == 'teacher'
@@ -185,7 +190,7 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
                             }
                           : null,
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+                        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                         decoration: BoxDecoration(
                           color: const Color(0xFF0284C7),
                           borderRadius: BorderRadius.circular(6),
@@ -195,21 +200,21 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
                           children: [
                             Icon(
                               _activeMode == 'teacher' ? Icons.search_rounded : Icons.lock_outline_rounded,
-                              size: 12,
+                              size: 11,
                               color: Colors.white70,
                             ),
-                            const SizedBox(width: 4),
+                            const SizedBox(width: 3),
                             Text(
                               badgeText.toUpperCase(),
                               style: GoogleFonts.lato(
-                                fontSize: 12,
+                                fontSize: 11,
                                 fontWeight: FontWeight.w800,
                                 color: Colors.white,
                               ),
                             ),
                             if (_activeMode == 'teacher') ...[
-                              const SizedBox(width: 4),
-                              const Icon(Icons.arrow_drop_down_rounded, size: 14, color: Colors.white70),
+                              const SizedBox(width: 3),
+                              const Icon(Icons.arrow_drop_down_rounded, size: 13, color: Colors.white70),
                             ],
                           ],
                         ),
@@ -217,26 +222,24 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 2),
                 Text(
-                  'Sector 43, Faridabad • Last Synced: ${MRUTimetableRepository.getSectionLastSyncedFormatted(_lockedSection)} • aSc Timetables Online Verified',
+                  isMobile
+                      ? 'Synced: ${MRUTimetableRepository.getSectionLastSyncedFormatted(_lockedSection)}'
+                      : 'Sector 43, Faridabad • Last Synced: ${MRUTimetableRepository.getSectionLastSyncedFormatted(_lockedSection)} • Verified',
                   style: GoogleFonts.lato(
-                    fontSize: 11,
+                    fontSize: 10.5,
                     color: const Color(0xFF94A3B8),
                   ),
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          ElevatedButton.icon(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF0284C7),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-              elevation: 0,
-            ),
-            onPressed: () {
+          const SizedBox(width: 6),
+          // Sync Button
+          GestureDetector(
+            onTap: () {
               TimetableSyncDialog.show(
                 context,
                 targetSection: _lockedSection,
@@ -250,16 +253,30 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
                 },
               );
             },
-            icon: const Icon(Icons.sync_rounded, size: 16),
-            label: Text(
-              'Sync MRU',
-              style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w800),
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: isMobile ? 8 : 12, vertical: isMobile ? 6 : 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFF0284C7),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.sync_rounded, size: 14, color: Colors.white),
+                  if (!isMobile) ...[
+                    const SizedBox(width: 4),
+                    Text('Sync MRU', style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ],
+                ],
+              ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: 4),
           IconButton(
             onPressed: () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close_rounded, color: Colors.white70),
+            icon: const Icon(Icons.close_rounded, color: Colors.white70, size: 20),
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
             tooltip: 'Close',
           ),
         ],
@@ -946,89 +963,173 @@ class _TimetableViewerDialogState extends State<TimetableViewerDialog> {
     final statusText = _activeMode == 'student'
         ? 'Class $_lockedSection verified from mru.edupage.org'
         : 'Faculty $_assignedTeacher verified from mru.edupage.org';
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isMobile = screenWidth < 700;
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+      padding: EdgeInsets.symmetric(horizontal: isMobile ? 12 : 20, vertical: isMobile ? 8 : 12),
       decoration: const BoxDecoration(
         color: Color(0xFFF8FAFC),
         borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF0284C7)),
-              const SizedBox(width: 6),
-              Text(
-                '$statusText • Real-time synchronized.',
-                style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
-              ),
-            ],
-          ),
-          Row(
-            children: [
-              OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF0284C7),
-                  side: const BorderSide(color: Color(0xFF0284C7)),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: isMobile
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.verified_rounded, size: 13, color: Color(0xFF0284C7)),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        '$statusText • Synced',
+                        style: GoogleFonts.lato(fontSize: 10.5, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
-                onPressed: () {
-                  TimetableSyncDialog.show(
-                    context,
-                    targetSection: _lockedSection,
-                    userRole: widget.userRole,
-                    onSynced: () {
-                      if (mounted) {
-                        setState(() {
-                          _reloadSchedules();
-                        });
-                      }
-                    },
-                  );
-                },
-                icon: const Icon(Icons.sync_rounded, size: 16),
-                label: Text('Sync from MRU Portal', style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w700)),
-              ),
-              const SizedBox(width: 8),
-              if (widget.document != null)
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF0F172A),
-                    side: const BorderSide(color: Color(0xFFCBD5E1)),
-                    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0284C7),
+                          side: const BorderSide(color: Color(0xFF0284C7)),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () {
+                          TimetableSyncDialog.show(
+                            context,
+                            targetSection: _lockedSection,
+                            userRole: widget.userRole,
+                            onSynced: () {
+                              if (mounted) setState(() => _reloadSchedules());
+                            },
+                          );
+                        },
+                        icon: const Icon(Icons.sync_rounded, size: 13),
+                        label: Text('Sync', style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                    if (widget.document?.contentBase64 != null) ...[
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF0F172A),
+                            side: const BorderSide(color: Color(0xFFCBD5E1)),
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          onPressed: () {
+                            openRawDocument(
+                              base64Content: widget.document!.contentBase64!,
+                              fileName: widget.document!.fileName,
+                              mimeType: 'application/pdf',
+                            );
+                          },
+                          icon: const Icon(Icons.picture_as_pdf_outlined, size: 13),
+                          label: Text('Vector PDF', style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w700)),
+                        ),
+                      ),
+                    ],
+                    const SizedBox(width: 6),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F172A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text('Close', style: GoogleFonts.lato(fontSize: 11.5, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
+                ),
+              ],
+            )
+          : Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Row(
+                    children: [
+                      const Icon(Icons.verified_rounded, size: 14, color: Color(0xFF0284C7)),
+                      const SizedBox(width: 6),
+                      Flexible(
+                        child: Text(
+                          '$statusText • Real-time synchronized.',
+                          style: GoogleFonts.lato(fontSize: 11, fontWeight: FontWeight.w600, color: const Color(0xFF475569)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
                   ),
-                  onPressed: () {
-                    if (widget.document?.contentBase64 != null) {
-                      openRawDocument(
-                        base64Content: widget.document!.contentBase64!,
-                        fileName: widget.document!.fileName,
-                        mimeType: 'application/pdf',
-                      );
-                    }
-                  },
-                  icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
-                  label: Text('Official Vector PDF', style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w700)),
                 ),
-              const SizedBox(width: 10),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF0F172A),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                  elevation: 0,
+                const SizedBox(width: 12),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF0284C7),
+                        side: const BorderSide(color: Color(0xFF0284C7)),
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                      onPressed: () {
+                        TimetableSyncDialog.show(
+                          context,
+                          targetSection: _lockedSection,
+                          userRole: widget.userRole,
+                          onSynced: () {
+                            if (mounted) setState(() => _reloadSchedules());
+                          },
+                        );
+                      },
+                      icon: const Icon(Icons.sync_rounded, size: 16),
+                      label: Text('Sync from MRU Portal', style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                    if (widget.document?.contentBase64 != null) ...[
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: const Color(0xFF0F172A),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        ),
+                        onPressed: () {
+                          openRawDocument(
+                            base64Content: widget.document!.contentBase64!,
+                            fileName: widget.document!.fileName,
+                            mimeType: 'application/pdf',
+                          );
+                        },
+                        icon: const Icon(Icons.picture_as_pdf_outlined, size: 16),
+                        label: Text('Official Vector PDF', style: GoogleFonts.lato(fontSize: 12, fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                    const SizedBox(width: 10),
+                    ElevatedButton(
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF0F172A),
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        elevation: 0,
+                      ),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: Text('Close', style: GoogleFonts.lato(fontSize: 12.5, fontWeight: FontWeight.w700)),
+                    ),
+                  ],
                 ),
-                onPressed: () => Navigator.of(context).pop(),
-                child: Text('Close', style: GoogleFonts.lato(fontSize: 12.5, fontWeight: FontWeight.w700)),
-              ),
-            ],
-          ),
-        ],
-      ),
+              ],
+            ),
     );
   }
 }

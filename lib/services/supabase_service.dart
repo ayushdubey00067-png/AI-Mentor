@@ -9,27 +9,284 @@ class SupabaseService {
   static final SupabaseClient _db = Supabase.instance.client;
 
   // ══════════════════════════════════════════════════════════
-  // AUTH
+  // AUTH (3-TIER: ADMIN, MENTOR, STUDENT)
   // ══════════════════════════════════════════════════════════
 
   static Future<UserModel?> login(String email, String password) async {
     final e = email.trim().toLowerCase(), p = password.trim();
     try {
-      final rows = await _db.from(kUsersTable).select('id').eq('email', e);
-      if (rows.isEmpty) return null;
-      final row = await _db.from(kUsersTable).select()
+      // 1. Check ADMINS table
+      final adminRow = await _db.from(kAdminsTable).select()
           .eq('email', e).eq('password_hash', p).maybeSingle();
-      if (row == null) return null;
-      await _db.from(kUsersTable)
-          .update({'last_active': DateTime.now().toIso8601String()})
-          .eq('id', row['id']);
-      return UserModel.fromMap(row);
+      if (adminRow != null) {
+        return UserModel.fromMap({...adminRow, 'role': 'admin'});
+      }
+
+      // 2. Check MENTORS table
+      final mentorRow = await _db.from(kMentorsTable).select()
+          .eq('email', e).eq('password_hash', p).maybeSingle();
+      if (mentorRow != null) {
+        await _db.from(kMentorsTable)
+            .update({'last_active': DateTime.now().toIso8601String()})
+            .eq('id', mentorRow['id']);
+        return UserModel.fromMap({...mentorRow, 'role': 'mentor'});
+      }
+
+      // 3. Check STUDENTS table (Support BOTH Official Email & Personal Email with Mobile as Password)
+      final studentOfficialRow = await _db.from(kStudentsTable).select()
+          .eq('official_email', e).eq('password_hash', p).maybeSingle();
+      if (studentOfficialRow != null) {
+        await _db.from(kStudentsTable)
+            .update({'last_active': DateTime.now().toIso8601String()})
+            .eq('id', studentOfficialRow['id']);
+        return UserModel.fromMap({...studentOfficialRow, 'role': 'student'});
+      }
+
+      final studentPersonalRow = await _db.from(kStudentsTable).select()
+          .eq('personal_email', e).eq('password_hash', p).maybeSingle();
+      if (studentPersonalRow != null) {
+        await _db.from(kStudentsTable)
+            .update({'last_active': DateTime.now().toIso8601String()})
+            .eq('id', studentPersonalRow['id']);
+        return UserModel.fromMap({...studentPersonalRow, 'role': 'student'});
+      }
+
+      // 4. Fallback check on USERS table for backward compatibility
+      final userRow = await _db.from(kUsersTable).select()
+          .eq('email', e).eq('password_hash', p).maybeSingle();
+      if (userRow != null) {
+        await _db.from(kUsersTable)
+            .update({'last_active': DateTime.now().toIso8601String()})
+            .eq('id', userRow['id']);
+        return UserModel.fromMap(userRow);
+      }
+
+      return null;
     } on PostgrestException catch (ex) {
       if (ex.message.contains('permission') || ex.message.contains('RLS')) {
-        throw Exception('RLS_BLOCKED: Run supabase_schema.sql');
+        throw Exception('RLS_BLOCKED: Run schema_v11.sql');
       }
       throw Exception('DB error: ${ex.message}');
     }
+  }
+
+  // ── ADMIN FACULTY PROVISIONING ────────────────────────────
+  static Future<UserModel> createMentor({
+    required String name,
+    required String email,
+    required String password,
+    String? department,
+    String? designation,
+    String? phone,
+    String? assignedClass,
+    String? officeLocation,
+    String? officeHours,
+  }) async {
+    final e = email.trim().toLowerCase();
+    final insertData = {
+      'email': e,
+      'password_hash': password.trim(),
+      'name': name.trim(),
+      'role': 'mentor',
+      'department': department?.trim() ?? 'Dept. of Computer Science & Technology',
+      'designation': designation?.trim() ?? 'Assistant Professor',
+      'phone': phone?.trim(),
+      'assigned_class': assignedClass?.trim() ?? 'CSE 4A',
+      'office_location': officeLocation?.trim(),
+      'office_hours': officeHours?.trim(),
+    };
+
+    final row = await _db.from(kMentorsTable).insert(insertData).select().single();
+    
+    // Also mirror to users table for backward compatibility
+    try {
+      await _db.from(kUsersTable).upsert({
+        ...insertData,
+        'id': row['id'],
+      }, onConflict: 'email');
+    } catch (_) {}
+
+    return UserModel.fromMap({...row, 'role': 'mentor'});
+  }
+
+  static Future<List<UserModel>> getAllMentors() async {
+    try {
+      final rows = await _db.from(kMentorsTable).select().order('name', ascending: true);
+      if ((rows as List).isNotEmpty) {
+        return rows.map((e) => UserModel.fromMap({...e, 'role': 'mentor'})).toList();
+      }
+    } catch (_) {}
+
+    // Fallback to users table
+    try {
+      final rows = await _db.from(kUsersTable).select().eq('role', 'mentor').order('name', ascending: true);
+      return (rows as List).map((e) => UserModel.fromMap(e)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> updateMentorAssignedClass(String mentorEmail, String newAssignedClass) async {
+    await _db.from(kMentorsTable)
+        .update({'assigned_class': newAssignedClass.trim()})
+        .eq('email', mentorEmail.trim().toLowerCase());
+  }
+
+  static Future<void> updateMentorProfile({
+    required String id,
+    required Map<String, dynamic> data,
+    String? oldEmail,
+    String? newEmail,
+  }) async {
+    // 1. Update mentors table
+    await _db.from(kMentorsTable).update({
+      ...data,
+      'last_active': DateTime.now().toIso8601String(),
+    }).eq('id', id);
+
+    // 2. If email changed, propagate to students and conversations
+    if (oldEmail != null && newEmail != null && oldEmail.trim().toLowerCase() != newEmail.trim().toLowerCase()) {
+      final oldClean = oldEmail.trim().toLowerCase();
+      final newClean = newEmail.trim().toLowerCase();
+      try {
+        await _db.from(kStudentsTable).update({'mentor_email': newClean}).eq('mentor_email', oldClean);
+      } catch (_) {}
+      try {
+        await _db.from(kConversationsTable).update({'mentor_email': newClean}).eq('mentor_email', oldClean);
+      } catch (_) {}
+    }
+
+    // 3. Mirror update to users table for backward compatibility
+    try {
+      await _db.from(kUsersTable).update({
+        if (data.containsKey('name')) 'name': data['name'],
+        if (data.containsKey('email')) 'email': data['email'],
+        if (data.containsKey('password_hash')) 'password_hash': data['password_hash'],
+        if (data.containsKey('department')) 'department': data['department'],
+        if (data.containsKey('designation')) 'designation': data['designation'],
+        if (data.containsKey('phone')) 'phone': data['phone'],
+        if (data.containsKey('office_location')) 'office_location': data['office_location'],
+        if (data.containsKey('office_hours')) 'office_hours': data['office_hours'],
+        if (data.containsKey('assigned_class')) 'section': data['assigned_class'],
+        'last_active': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+    } catch (_) {}
+  }
+
+  static Future<void> deleteMentor(String id, {required String email}) async {
+    final emailClean = email.trim().toLowerCase();
+    
+    // 1. Unlink students safely without deleting student data
+    try {
+      await _db.from(kStudentsTable).update({'mentor_email': null}).eq('mentor_email', emailClean);
+    } catch (_) {}
+
+    // 2. Delete from mentors table
+    await _db.from(kMentorsTable).delete().eq('id', id);
+
+    // 3. Delete from users table if present
+    try {
+      await _db.from(kUsersTable).delete().eq('id', id);
+    } catch (_) {}
+  }
+
+  // ── BATCH STUDENT INGESTION ───────────────────────────────
+  static Future<Map<String, dynamic>> batchRegisterStudents({
+    required List<Map<String, dynamic>> studentsList,
+    required String mentorEmail,
+  }) async {
+    final sanitizedList = studentsList.map((s) => {
+      ...s,
+      'mentor_email': mentorEmail.trim().toLowerCase(),
+    }).toList();
+
+    try {
+      // 1. Try high-performance stored RPC
+      final rpcRes = await _db.rpc('batch_upsert_students', params: {
+        'students_data': sanitizedList,
+      });
+      return (rpcRes is Map) ? Map<String, dynamic>.from(rpcRes) : {'success': true, 'total_processed': sanitizedList.length};
+    } catch (e) {
+      // 2. Direct Supabase bulk upsert fallback
+      await _db.from(kStudentsTable).upsert(sanitizedList, onConflict: 'roll_number');
+      return {'success': true, 'total_processed': sanitizedList.length};
+    }
+  }
+
+  static Future<List<UserModel>> getMyStudents(String mentorEmail) async {
+    final emailClean = mentorEmail.trim().toLowerCase();
+    try {
+      final rows = await _db.from(kStudentsTable).select()
+          .eq('mentor_email', emailClean)
+          .order('roll_number', ascending: true);
+      if ((rows as List).isNotEmpty) {
+        return rows.map((e) => UserModel.fromMap({...e, 'role': 'student'})).toList();
+      }
+    } catch (_) {}
+
+    // Fallback to users table
+    try {
+      final rows = await _db.from(kUsersTable).select()
+          .eq('role', 'student').eq('mentor_email', emailClean)
+          .order('created_at', ascending: false);
+      return (rows as List).map((e) => UserModel.fromMap(e)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<List<UserModel>> getAllStudents() async {
+    try {
+      final rows = await _db.from(kStudentsTable).select().order('roll_number', ascending: true);
+      if ((rows as List).isNotEmpty) {
+        return rows.map((e) => UserModel.fromMap({...e, 'role': 'student'})).toList();
+      }
+    } catch (_) {}
+
+    try {
+      final rows = await _db.from(kUsersTable).select().eq('role', 'student').order('created_at', ascending: false);
+      return (rows as List).map((e) => UserModel.fromMap(e)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  static Future<void> updateStudentSectionAndSemester({
+    required String rollNumber,
+    required String newSection,
+    required String newSemester,
+  }) async {
+    final rollClean = rollNumber.trim();
+    await _db.from(kStudentsTable).update({
+      'section': newSection.trim(),
+      'semester': newSemester.trim(),
+      'last_active': DateTime.now().toIso8601String(),
+    }).eq('roll_number', rollClean);
+
+    // Also update users table if present
+    try {
+      await _db.from(kUsersTable).update({
+        'section': newSection.trim(),
+        'semester': newSemester.trim(),
+      }).eq('roll_number', rollClean);
+    } catch (_) {}
+  }
+
+  static Future<void> batchUpdateClassSemester({
+    required String mentorEmail,
+    required String newSemester,
+    String? newSection,
+  }) async {
+    final emailClean = mentorEmail.trim().toLowerCase();
+    final updateData = <String, dynamic>{
+      'semester': newSemester.trim(),
+      'last_active': DateTime.now().toIso8601String(),
+    };
+    if (newSection != null && newSection.trim().isNotEmpty) {
+      updateData['section'] = newSection.trim();
+    }
+
+    await _db.from(kStudentsTable).update(updateData).eq('mentor_email', emailClean);
   }
 
   static Future<UserModel> register({
@@ -41,61 +298,59 @@ class SupabaseService {
     final e = email.trim().toLowerCase();
     try {
       if (role == 'student' && mentorEmail != null && mentorEmail.trim().isNotEmpty) {
-        final m = await _db.from(kUsersTable).select('id')
-            .eq('email', mentorEmail.trim().toLowerCase()).eq('role', 'mentor');
+        final m = await _db.from(kMentorsTable).select('id')
+            .eq('email', mentorEmail.trim().toLowerCase());
         if (m.isEmpty) {
-          throw Exception(
-            'invalid_mentor: No mentor with email "${mentorEmail.trim()}"');
+          final mUser = await _db.from(kUsersTable).select('id')
+              .eq('email', mentorEmail.trim().toLowerCase()).eq('role', 'mentor');
+          if (mUser.isEmpty) {
+            throw Exception('invalid_mentor: No mentor with email "${mentorEmail.trim()}"');
+          }
         }
       }
-      final exists = await _db.from(kUsersTable).select('id').eq('email', e);
-      if (exists.isNotEmpty) throw Exception('duplicate_email: Already registered.');
-      final insertData = <String, dynamic>{
-        'email': e, 'password_hash': password.trim(),
-        'name': name.trim(), 'role': role,
-        'program':  (role=='student' && program?.trim().isNotEmpty==true)  ? program!.trim()  : null,
-        'branch':   (role=='student' && branch?.trim().isNotEmpty==true)   ? branch!.trim()   : null,
-        'semester': (role=='student' && semester?.trim().isNotEmpty==true) ? semester!.trim() : null,
-        'mentor_email': (role=='student' && mentorEmail?.trim().isNotEmpty==true)
-            ? mentorEmail!.trim().toLowerCase() : null,
-        'roll_number': (role=='student' && rollNumber?.trim().isNotEmpty==true) ? rollNumber!.trim() : null,
-        'department': department?.trim(),
-        'designation': (role=='mentor') ? designation?.trim() : null,
-        'phone': phone?.trim(),
-      };
-      if (role == 'student' && section?.trim().isNotEmpty == true) {
-        insertData['section'] = section!.trim();
+
+      if (role == 'student') {
+        final insertStudent = {
+          'official_email': e,
+          'password_hash': password.trim(),
+          'full_name': name.trim(),
+          'role': 'student',
+          'roll_number': rollNumber?.trim() ?? 'ROLL_${DateTime.now().millisecondsSinceEpoch}',
+          'mobile_no': phone?.trim() ?? password.trim(),
+          'program': program?.trim() ?? 'B.Tech',
+          'branch': branch?.trim() ?? 'Computer Science & Engineering',
+          'semester': semester?.trim() ?? '4',
+          'section': section?.trim() ?? 'A',
+          'mentor_email': mentorEmail?.trim().toLowerCase(),
+          'department': department?.trim() ?? 'Dept. of Computer Science & Technology',
+        };
+        final row = await _db.from(kStudentsTable).insert(insertStudent).select().single();
+        return UserModel.fromMap({...row, 'role': 'student'});
+      } else {
+        return createMentor(
+          name: name,
+          email: e,
+          password: password,
+          department: department,
+          designation: designation,
+          phone: phone,
+          assignedClass: section,
+        );
       }
-      final row = await _db.from(kUsersTable).insert(insertData).select().single();
-      return UserModel.fromMap(row);
     } on PostgrestException catch (ex) {
       if (ex.code == '23505') throw Exception('duplicate_email: Already registered.');
       throw Exception('Register failed: ${ex.message}');
-    } catch (ex) {
-      if (ex.toString().contains('duplicate_email') ||
-          ex.toString().contains('invalid_mentor')) {
-        rethrow;
-      }
-      throw Exception('Register error: $ex');
     }
   }
 
   static Future<List<UserModel>> getAllUsers() async {
     try {
-      final rows = await _db.from(kUsersTable).select()
-          .order('created_at', ascending: false);
-      return (rows as List).map((e) => UserModel.fromMap(e)).toList();
+      final students = await getAllStudents();
+      final mentors = await getAllMentors();
+      return [...mentors, ...students];
     } catch (_) { return []; }
   }
 
-  static Future<List<UserModel>> getMyStudents(String mentorEmail) async {
-    try {
-      final rows = await _db.from(kUsersTable).select()
-          .eq('role', 'student').eq('mentor_email', mentorEmail.toLowerCase())
-          .order('created_at', ascending: false);
-      return (rows as List).map((e) => UserModel.fromMap(e)).toList();
-    } catch (_) { return []; }
-  }
 
   // ══════════════════════════════════════════════════════════
   // CONVERSATIONS
@@ -393,10 +648,9 @@ class SupabaseService {
   }
 
   static Future<void> deleteDocument(String docId) async {
-    // Clean up from all 6 dedicated category tables as well as legacy tables
+    // Clean up from dedicated category tables as well as legacy tables
     await Future.wait([
       _db.from('marksheet_chunks').delete().eq('document_id', docId).catchError((_) => null),
-      _db.from('attendance_chunks').delete().eq('document_id', docId).catchError((_) => null),
       _db.from('syllabus_chunks').delete().eq('document_id', docId).catchError((_) => null),
       _db.from('calendar_chunks').delete().eq('document_id', docId).catchError((_) => null),
       _db.from('assignment_chunks').delete().eq('document_id', docId).catchError((_) => null),
@@ -464,9 +718,6 @@ class SupabaseService {
       case 'result':
       case 'academic_results':
         return 'marksheet_chunks';
-      case 'attendance':
-      case 'attendance_register':
-        return 'attendance_chunks';
       case 'syllabus':
       case 'curriculum':
         return 'syllabus_chunks';
@@ -479,6 +730,7 @@ class SupabaseService {
         return 'assignment_chunks';
       case 'circular':
       case 'notice':
+      case 'attendance': // Attendance is strictly relational (stored in attendance & student_attendance_summary)
       case 'other':
       case 'others':
       default:
@@ -539,12 +791,6 @@ class SupabaseService {
           if (targetRollNo != null && targetRollNo.isNotEmpty) {
             row['target_roll_no'] = targetRollNo;
           }
-        } else if (targetCategoryTable == 'attendance_chunks') {
-          row['target_scope'] = targetScope;
-          if (targetRollNo != null && targetRollNo.isNotEmpty) {
-            row['target_roll_no'] = targetRollNo;
-          }
-          if (subjectCode != null) row['subject_code'] = subjectCode;
         } else if (targetCategoryTable == 'syllabus_chunks') {
           if (subjectCode != null) row['subject_code'] = subjectCode;
           if (subjectName != null) row['subject_name'] = subjectName;
@@ -651,7 +897,6 @@ class SupabaseService {
   static Future<void> deleteDocumentChunks(String documentId) async {
     await Future.wait([
       _db.from('marksheet_chunks').delete().eq('document_id', documentId).catchError((_) => null),
-      _db.from('attendance_chunks').delete().eq('document_id', documentId).catchError((_) => null),
       _db.from('syllabus_chunks').delete().eq('document_id', documentId).catchError((_) => null),
       _db.from('calendar_chunks').delete().eq('document_id', documentId).catchError((_) => null),
       _db.from('assignment_chunks').delete().eq('document_id', documentId).catchError((_) => null),
@@ -767,7 +1012,7 @@ class SupabaseService {
   }
 
   // ══════════════════════════════════════════════════════════
-  // ACADEMIC DATA LOOKUPS [NEW]
+  // ACADEMIC DATA LOOKUPS (BULK & INDIVIDUAL)
   // ══════════════════════════════════════════════════════════
 
   static Future<List<Map<String, dynamic>>> getAcademicRecord(String studentId, {String? rollNo}) async {
@@ -778,11 +1023,20 @@ class SupabaseService {
       String? resolvedRollNo = rollNo?.trim();
       if ((resolvedRollNo == null || resolvedRollNo.isEmpty) && studentId.isNotEmpty) {
         try {
-          final userRow = await _db.from(kUsersTable).select('roll_number').eq('id', studentId).maybeSingle();
-          if (userRow != null && userRow['roll_number'] != null) {
-            resolvedRollNo = userRow['roll_number'].toString().trim();
+          final sRow = await _db.from(kStudentsTable).select('roll_number').eq('id', studentId).maybeSingle();
+          if (sRow != null && sRow['roll_number'] != null) {
+            resolvedRollNo = sRow['roll_number'].toString().trim();
           }
         } catch (_) {}
+
+        if (resolvedRollNo == null || resolvedRollNo.isEmpty) {
+          try {
+            final userRow = await _db.from(kUsersTable).select('roll_number').eq('id', studentId).maybeSingle();
+            if (userRow != null && userRow['roll_number'] != null) {
+              resolvedRollNo = userRow['roll_number'].toString().trim();
+            }
+          } catch (_) {}
+        }
       }
 
       if (resolvedRollNo == null || resolvedRollNo.isEmpty) {
@@ -803,10 +1057,112 @@ class SupabaseService {
         allRecords.addAll(List<Map<String, dynamic>>.from(resultRows).map((r) => {...r, 'record_type': 'result'}));
       }
 
+      // 3. Fetch from Student Attendance Summary (Overall % & Defaulter Stats)
+      try {
+        final sumRow = await _db.from('student_attendance_summary').select()
+            .ilike('student_roll_no', resolvedRollNo).maybeSingle();
+        if (sumRow != null) {
+          allRecords.add({...sumRow, 'record_type': 'attendance_summary'});
+        }
+      } catch (_) {}
+
       return allRecords;
     } catch (e) {
       debugPrint('⚠️ getAcademicRecord failed: $e');
       return [];
+    }
+  }
+
+  /// Bulk fetch attendance summaries (overall %, defaulter counts, is_critical) for a class roster in 1 query
+  static Future<List<Map<String, dynamic>>> getClassAttendanceSummaries(
+    List<String> rollNumbers, {
+    String? semester,
+  }) async {
+    if (rollNumbers.isEmpty) return [];
+    try {
+      var query = _db.from('student_attendance_summary').select()
+          .inFilter('student_roll_no', rollNumbers);
+      if (semester != null && semester.isNotEmpty) {
+        query = query.eq('semester', semester.trim());
+      }
+      final rows = await query.order('overall_percentage', ascending: true);
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (e) {
+      debugPrint('⚠️ getClassAttendanceSummaries error: $e');
+      return [];
+    }
+  }
+
+  /// Bulk fetch subject-wise attendance breakdown for a class roster in 1 query
+  static Future<List<Map<String, dynamic>>> getClassSubjectAttendance(
+    List<String> rollNumbers, {
+    String? semester,
+  }) async {
+    if (rollNumbers.isEmpty) return [];
+    try {
+      var query = _db.from(kAcademicRecordsTable).select()
+          .inFilter('student_roll_no', rollNumbers);
+      if (semester != null && semester.isNotEmpty) {
+        query = query.eq('semester', semester.trim());
+      }
+      final rows = await query;
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (e) {
+      debugPrint('⚠️ getClassSubjectAttendance error: $e');
+      return [];
+    }
+  }
+
+  /// Bulk fetch examination results for a class roster in 1 query
+  static Future<List<Map<String, dynamic>>> getClassAcademicResults(
+    List<String> rollNumbers, {
+    String? semester,
+  }) async {
+    if (rollNumbers.isEmpty) return [];
+    try {
+      var query = _db.from(kAcademicResultsTable).select()
+          .inFilter('student_roll_no', rollNumbers);
+      if (semester != null && semester.isNotEmpty) {
+        query = query.eq('semester', semester.trim());
+      }
+      final rows = await query;
+      return List<Map<String, dynamic>>.from(rows as List);
+    } catch (e) {
+      debugPrint('⚠️ getClassAcademicResults error: $e');
+      return [];
+    }
+  }
+
+  /// Single student full attendance transcript (summary + subject details)
+  static Future<Map<String, dynamic>> getStudentFullAttendance(
+    String rollNumber, {
+    String? semester,
+  }) async {
+    final rollClean = rollNumber.trim();
+    if (rollClean.isEmpty) return {};
+
+    try {
+      // 1. Overall Summary
+      var sumQuery = _db.from('student_attendance_summary').select().ilike('student_roll_no', rollClean);
+      if (semester != null && semester.isNotEmpty) {
+        sumQuery = sumQuery.eq('semester', semester.trim());
+      }
+      final summary = await sumQuery.maybeSingle();
+
+      // 2. Subject Breakdown
+      var subQuery = _db.from(kAcademicRecordsTable).select().ilike('student_roll_no', rollClean);
+      if (semester != null && semester.isNotEmpty) {
+        subQuery = subQuery.eq('semester', semester.trim());
+      }
+      final subjects = await subQuery.order('attendance_percentage', ascending: true);
+
+      return {
+        'summary': summary,
+        'subjects': List<Map<String, dynamic>>.from(subjects as List),
+      };
+    } catch (e) {
+      debugPrint('⚠️ getStudentFullAttendance error: $e');
+      return {};
     }
   }
 
@@ -815,11 +1171,19 @@ class SupabaseService {
       String? resolvedRollNo = rollNo?.trim();
       if ((resolvedRollNo == null || resolvedRollNo.isEmpty) && studentId.isNotEmpty) {
         try {
-          final userRow = await _db.from(kUsersTable).select('roll_number').eq('id', studentId).maybeSingle();
-          if (userRow != null && userRow['roll_number'] != null) {
-            resolvedRollNo = userRow['roll_number'].toString().trim();
+          final sRow = await _db.from(kStudentsTable).select('roll_number').eq('id', studentId).maybeSingle();
+          if (sRow != null && sRow['roll_number'] != null) {
+            resolvedRollNo = sRow['roll_number'].toString().trim();
           }
         } catch (_) {}
+        if (resolvedRollNo == null || resolvedRollNo.isEmpty) {
+          try {
+            final userRow = await _db.from(kUsersTable).select('roll_number').eq('id', studentId).maybeSingle();
+            if (userRow != null && userRow['roll_number'] != null) {
+              resolvedRollNo = userRow['roll_number'].toString().trim();
+            }
+          } catch (_) {}
+        }
       }
 
       if (resolvedRollNo == null || resolvedRollNo.isEmpty) return [];
@@ -837,13 +1201,26 @@ class SupabaseService {
   static Future<UserModel?> findStudentByQuery(String query, {String? mentorEmail}) async {
     try {
       final q = query.trim().toLowerCase();
-      // Search by Email, Name, or Roll Number
+      // 1. Search students table first
+      try {
+        var studentQuery = _db.from(kStudentsTable).select()
+            .or('official_email.ilike.%$q%,full_name.ilike.%$q%,roll_number.ilike.%$q%,personal_email.ilike.%$q%');
+        if (mentorEmail != null && mentorEmail.trim().isNotEmpty) {
+          studentQuery = studentQuery.eq('mentor_email', mentorEmail.trim().toLowerCase());
+        }
+        final studentRow = await studentQuery.limit(1).maybeSingle();
+        if (studentRow != null) {
+          return UserModel.fromMap({...studentRow, 'role': 'student'});
+        }
+      } catch (_) {}
+
+      // 2. Fallback search in users table
       var builder = _db.from(kUsersTable).select()
           .eq('role', 'student')
           .or('email.ilike.%$q%,name.ilike.%$q%,roll_number.ilike.%$q%');
       
-      if (mentorEmail != null) {
-        builder = builder.eq('mentor_email', mentorEmail.toLowerCase());
+      if (mentorEmail != null && mentorEmail.trim().isNotEmpty) {
+        builder = builder.eq('mentor_email', mentorEmail.trim().toLowerCase());
       }
       
       final rows = await builder.limit(1).maybeSingle();
@@ -857,5 +1234,154 @@ class SupabaseService {
 
   static Future<void> updateUserProfile(UserModel user) async {
     await _db.from(kUsersTable).update(user.toMap()).eq('id', user.id);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ATTENDANCE & MULTI-SEMESTER INGESTION [NEW]
+  // ══════════════════════════════════════════════════════════
+
+  /// Uploads and upserts an entire attendance monitoring report into Supabase
+  static Future<Map<String, dynamic>> uploadAttendanceReport({
+    required ParsedAttendanceReport report,
+    required String uploaderEmail,
+  }) async {
+    try {
+      final reportMeta = {
+        'class_name': report.className,
+        'section': report.section,
+        'semester': report.semester,
+        'department': report.department,
+        'branch': report.branch,
+        'cycle_name': report.cycleName,
+        'date_range': report.dateRange,
+        'min_criteria': report.minCriteria,
+        'uploaded_by': uploaderEmail.toLowerCase().trim(),
+        'total_students': report.totalStudents,
+        'critical_count': report.criticalCount,
+      };
+
+      final List<Map<String, dynamic>> recordsData = [];
+      final List<Map<String, dynamic>> summariesData = [];
+
+      for (final st in report.studentRows) {
+        // Individual subject attendance records
+        for (final sub in report.subjects) {
+          final pct = st.subjectPercentages[sub.subjectCode];
+          if (pct != null) {
+            recordsData.add({
+              'student_roll_no': st.rollNo,
+              'student_name': st.studentName,
+              'semester': report.semester,
+              'subject_code': sub.subjectCode,
+              'subject_name': sub.subjectName,
+              'course_type': sub.courseType,
+              'faculty_name': sub.facultyName,
+              'attendance_percentage': pct,
+              'monitoring_cycle': report.cycleName,
+              'academic_year': '2025-2026',
+            });
+          }
+        }
+
+        // Student overall summary
+        summariesData.add({
+          'student_roll_no': st.rollNo,
+          'semester': report.semester,
+          'monitoring_cycle': report.cycleName,
+          'overall_percentage': st.overallPercentage,
+          'defaulter_subject_cnt': st.defaulterCount,
+          'is_critical': st.isCritical,
+        });
+      }
+
+      final res = await _db.rpc('batch_upsert_attendance', params: {
+        'report_meta': reportMeta,
+        'records_data': recordsData,
+        'summaries_data': summariesData,
+      });
+
+      return {
+        'success': true,
+        'total_subjects_updated': res['total_subjects_updated'] ?? recordsData.length,
+        'total_students_updated': res['total_students_updated'] ?? summariesData.length,
+        'report_id': res['report_id'],
+      };
+    } catch (e) {
+      debugPrint('❌ uploadAttendanceReport failed: $e');
+      return {
+        'success': false,
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Fetches subject-wise attendance records for a student scoped by roll number and semester
+  static Future<List<AttendanceRecord>> getStudentAttendanceRecords(
+    String rollNumber, {
+    String? semester,
+    String? cycle,
+  }) async {
+    try {
+      var query = _db.from('attendance').select().ilike('student_roll_no', rollNumber.trim());
+
+      if (semester != null && semester.isNotEmpty) {
+        query = query.eq('semester', semester.trim());
+      }
+      if (cycle != null && cycle.isNotEmpty) {
+        query = query.eq('monitoring_cycle', cycle.trim());
+      }
+
+      final rows = await query.order('subject_name', ascending: true);
+      return (rows as List).map((r) => AttendanceRecord.fromMap(r)).toList();
+    } catch (e) {
+      debugPrint('⚠️ getStudentAttendanceRecords failed: $e');
+      return [];
+    }
+  }
+
+  /// Fetches overall attendance summary for a student
+  static Future<StudentAttendanceSummary?> getStudentAttendanceSummary(
+    String rollNumber, {
+    String? semester,
+    String? cycle,
+  }) async {
+    try {
+      var query = _db.from('student_attendance_summary').select().ilike('student_roll_no', rollNumber.trim());
+
+      if (semester != null && semester.isNotEmpty) {
+        query = query.eq('semester', semester.trim());
+      }
+      if (cycle != null && cycle.isNotEmpty) {
+        query = query.eq('monitoring_cycle', cycle.trim());
+      }
+
+      final row = await query.order('last_updated', ascending: false).limit(1).maybeSingle();
+      if (row == null) return null;
+      return StudentAttendanceSummary.fromMap(row);
+    } catch (e) {
+      debugPrint('⚠️ getStudentAttendanceSummary failed: $e');
+      return null;
+    }
+  }
+
+  /// Fetches all attendance reports for a class
+  static Future<List<AttendanceReportModel>> getAttendanceReports({
+    String? className,
+    String? section,
+  }) async {
+    try {
+      var query = _db.from('attendance_reports').select();
+      if (className != null && className.isNotEmpty) {
+        query = query.ilike('class_name', '%${className.trim()}%');
+      }
+      if (section != null && section.isNotEmpty) {
+        query = query.eq('section', section.trim());
+      }
+      final rows = await query.order('created_at', ascending: false);
+      return (rows as List).map((r) => AttendanceReportModel.fromMap(r)).toList();
+    } catch (e) {
+      debugPrint('⚠️ getAttendanceReports failed: $e');
+      return [];
+    }
   }
 }

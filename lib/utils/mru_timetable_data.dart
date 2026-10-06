@@ -84803,25 +84803,23 @@ class MRUTimetableRepository {
     String? semester,
     String? section,
   }) {
+    // 1. Direct exact full match (e.g. "CSE 5A", "AIML 5B")
     if (section != null && section.trim().isNotEmpty) {
       final clean = section.trim();
       if (rawClassData.containsKey(clean)) return clean;
-      final match = rawClassData.keys.firstWhere(
-        (k) => k.toLowerCase() == clean.toLowerCase() || k.toLowerCase().contains(clean.toLowerCase()),
-        orElse: () => '',
-      );
-      if (match.isNotEmpty) return match;
     }
 
-    final b = (branch ?? '').toLowerCase();
+    // 2. Extract semester number (default 5)
     final sem = (semester ?? '5').replaceAll(RegExp(r'[^0-9]'), '');
     final semNum = sem.isEmpty ? '5' : sem;
 
+    // 3. Extract branch prefix
+    final b = (branch ?? '').toLowerCase();
     String branchPrefix = 'CSE';
-    if (b.contains('cst') || b.contains('information')) {
-      branchPrefix = 'CST';
-    } else if (b.contains('ai') || b.contains('machine')) {
+    if (b.contains('aiml') || b.contains('ai') || b.contains('machine')) {
       branchPrefix = 'AIML';
+    } else if (b.contains('cst') || b.contains('information')) {
+      branchPrefix = 'CST';
     } else if (b.contains('data') || b.contains('ds')) {
       branchPrefix = 'DS';
     } else if (b.contains('cyber') || b.contains('security')) {
@@ -84836,9 +84834,25 @@ class MRUTimetableRepository {
       branchPrefix = 'BBA';
     }
 
-    final candidate = '$branchPrefix $semNum' 'A';
+    // 4. Extract section letter (e.g. "A", "B", "C", "D")
+    String secLetter = 'A';
+    if (section != null && section.trim().isNotEmpty) {
+      final cleanSec = section.trim().toUpperCase();
+      final letterMatch = RegExp(r'[A-Z]$').firstMatch(cleanSec);
+      if (letterMatch != null) {
+        secLetter = letterMatch.group(0)!;
+      }
+    }
+
+    // 5. Try candidate: e.g. "CSE 5A"
+    final candidate = '$branchPrefix $semNum$secLetter';
     if (rawClassData.containsKey(candidate)) return candidate;
 
+    // 6. Try alternative candidate with 'A'
+    final fallbackCandidate = '$branchPrefix ${semNum}A';
+    if (rawClassData.containsKey(fallbackCandidate)) return fallbackCandidate;
+
+    // 7. Fuzzy search matching BOTH branch prefix AND semester number
     final fuzzy = rawClassData.keys.firstWhere(
       (k) => k.toLowerCase().contains(branchPrefix.toLowerCase()) && k.contains(semNum),
       orElse: () => 'CSE 5A',

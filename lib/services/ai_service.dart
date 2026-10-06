@@ -14,55 +14,74 @@ class AIService {
   static Future<HttpResponseMock> _invokeFunction(
     String task,
     String model,
-    Map<String, dynamic> body,
-  ) async {
-    try {
-      final res = await _supabase.functions.invoke(
-        kSupabaseChatFunction,
-        body: {
-          'model': model,
-          ...body,
-        },
-        headers: {'x-gemini-task': task},
-      ).timeout(const Duration(seconds: 60));
+    Map<String, dynamic> body, {
+    int maxRetries = 2,
+  }) async {
+    for (int attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        final res = await _supabase.functions.invoke(
+          kSupabaseChatFunction,
+          body: {
+            'model': model,
+            ...body,
+          },
+          headers: {'x-gemini-task': task},
+        ).timeout(const Duration(seconds: 40));
 
-      if (res.status == 200) {
-        return HttpResponseMock(res.status, jsonEncode(res.data));
-      }
-
-      debugPrint('❌ Supabase Function Error: Status=${res.status}');
-
-      // Handle specific errors
-      if (res.status == 429) {
-        throw Exception('RATE_LIMIT: AI is currently overloaded.');
-      }
-      if (res.status == 503) {
-        throw Exception('MODEL_OVERLOADED_503: Model $model is experiencing high demand.');
-      }
-      if (res.status == 404) {
-        throw Exception(
-            'NOT_FOUND: Edge function "chat" not found. Did you run "supabase functions deploy chat"?');
-      }
-      if (res.status == 500) {
-        final errorData = res.data as Map<String, dynamic>?;
-        if (errorData?['error'] == 'MISSING_API_KEY') {
-          throw Exception(
-              'CONFIG_ERROR: API Keys not set in Supabase secrets. Run "supabase secrets set GEMINI_API_KEYS=...".');
+        if (res.status == 200) {
+          return HttpResponseMock(res.status, jsonEncode(res.data));
         }
-      }
 
-      throw Exception('AI_SERVICE_ERROR: ${res.status}');
-    } catch (e) {
-      debugPrint('❌ _invokeFunction Exception: $e');
-      if (e is FunctionException) {
-        if (e.status == 429) throw Exception('RATE_LIMIT: Model $model hit quota.');
-        if (e.status == 503) throw Exception('MODEL_OVERLOADED_503: Model $model high demand.');
+        debugPrint('❌ Supabase Function Error: Status=${res.status} (attempt $attempt)');
+
+        if (res.status == 429) {
+          throw Exception('RATE_LIMIT: AI is currently overloaded.');
+        }
+        if (res.status == 503) {
+          throw Exception('MODEL_OVERLOADED_503: Model $model is experiencing high demand.');
+        }
+        if (res.status == 404) {
+          throw Exception(
+              'NOT_FOUND: Edge function "chat" not found. Did you run "supabase functions deploy chat"?');
+        }
+        if (res.status == 500) {
+          final errorData = res.data as Map<String, dynamic>?;
+          if (errorData?['error'] == 'MISSING_API_KEY') {
+            throw Exception(
+                'CONFIG_ERROR: API Keys not set in Supabase secrets. Run "supabase secrets set GEMINI_API_KEYS=...".');
+          }
+        }
+
+        throw Exception('AI_SERVICE_ERROR: ${res.status}');
+      } catch (e) {
+        debugPrint('❌ _invokeFunction Exception (attempt $attempt): $e');
+        final errStr = e.toString();
+        final isRetryable = errStr.contains('RATE_LIMIT') ||
+            errStr.contains('503') ||
+            errStr.contains('TimeoutException') ||
+            errStr.contains('ClientException') ||
+            errStr.contains('SocketException') ||
+            errStr.contains('Failed to fetch') ||
+            errStr.contains('XMLHttpRequest') ||
+            errStr.contains('NETWORK_ERROR') ||
+            errStr.contains('500');
+
+        if (isRetryable && attempt < maxRetries) {
+          await Future.delayed(Duration(milliseconds: 500 * (attempt + 1)));
+          continue;
+        }
+
+        if (e is FunctionException) {
+          if (e.status == 429) throw Exception('RATE_LIMIT: Model $model hit quota.');
+          if (e.status == 503) throw Exception('MODEL_OVERLOADED_503: Model $model high demand.');
+        }
+        if (e is TimeoutException) {
+          throw Exception('NETWORK_ERROR: Request timed out');
+        }
+        rethrow;
       }
-      if (e is TimeoutException) {
-        throw Exception('NETWORK_ERROR: Request timed out');
-      }
-      rethrow;
     }
+    throw Exception('NETWORK_ERROR: Request failed after retries');
   }
 
   // ══════════════════════════════════════════════════════════
@@ -418,21 +437,15 @@ class AIService {
         final data = jsonDecode(res.body);
         final text =
             data['candidates']?[0]['content']?['parts']?[0]['text'] as String?;
-        return text?.trim() ?? '⚠️ AI response was empty.';
+        if (text != null && text.trim().isNotEmpty) {
+          return text.trim();
+        }
+        debugPrint('⚠️ Empty response from $model, trying next fallback...');
       } catch (e) {
         lastError = e.toString();
-        // Catch 429 quota exhaustion or 503 high demand spikes and rotate to fallback model
-        if (lastError.contains('RATE_LIMIT') ||
-            lastError.contains('429') ||
-            lastError.contains('503') ||
-            lastError.contains('MODEL_OVERLOADED') ||
-            lastError.contains('RESOURCE_EXHAUSTED') ||
-            lastError.contains('UNAVAILABLE')) {
-          debugPrint('⏳ Model $model unavailable (429/503). Rotating to fallback model...');
-          continue;
-        }
-        // If it's not a rate limit / demand error, rethrow immediately
-        rethrow;
+        debugPrint('⚠️ Model $model failed ($lastError). Rotating to fallback model...');
+        // Rotate across all fallback models for any transient model or network failure
+        continue;
       }
     }
 
@@ -496,10 +509,10 @@ class AIService {
 
   static String friendlyError(String e) {
     if (e.contains('RATE_LIMIT')) {
-      return '⏳ **AI is busy.** Please wait a minute and try again.';
+      return '⏳ **AI is busy right now.** Please wait a moment and try again.';
     }
-    if (e.contains('NETWORK_ERROR')) {
-      return '🌐 **Network issue.** Check your connection.';
+    if (e.contains('NETWORK_ERROR') || e.contains('XMLHttpRequest') || e.contains('Failed to fetch')) {
+      return '🌐 **Connection hiccup.** Tap retry or check your internet connection.';
     }
     if (e.contains('NOT_FOUND')) {
       return '🚀 **Backend not ready.** Function "chat" is not deployed yet.';
@@ -508,8 +521,7 @@ class AIService {
       return '🔑 **Config Error.** Gemini API keys are missing in Supabase secrets.';
     }
 
-    // Fallback: show the actual error for easier debugging
-    return '❌ **Something went wrong.**\n\nDetail: ${e.replaceAll('Exception:', '').trim()}';
+    return '⚠️ **Temporary connection glitch.** Please try asking again!';
   }
 }
 

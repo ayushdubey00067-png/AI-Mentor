@@ -9,6 +9,8 @@ import 'auth_screen.dart';
 import 'student/student_home_screen.dart';
 import 'mentor/mentor_dashboard_screen.dart';
 
+import 'admin/admin_dashboard_screen.dart';
+
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
   @override
@@ -38,15 +40,23 @@ class _SplashScreenState extends State<SplashScreen>
     _navigated = true;
     Future.delayed(const Duration(milliseconds: 1500), () {
       if (!mounted) return;
+      Widget target;
+      if (!auth.isLoggedIn) {
+        target = const AuthScreen();
+      } else if (auth.isAdmin) {
+        target = const AdminDashboardScreen();
+      } else if (auth.isMentor) {
+        target = const MentorDashboardScreen();
+      } else {
+        target = const StudentHomeScreen();
+      }
+
       Navigator.of(context).pushReplacement(MaterialPageRoute(
-        builder: (_) => auth.isLoggedIn
-            ? (auth.isMentor
-                ? const MentorDashboardScreen()
-                : const StudentHomeScreen())
-            : const AuthScreen(),
+        builder: (_) => target,
       ));
     });
   }
+
 
   @override
   void dispose() {
